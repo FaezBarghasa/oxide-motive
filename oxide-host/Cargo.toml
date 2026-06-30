@@ -1,0 +1,12 @@
+[package]
+name = "oxide-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxide-protocol = { path = "../oxide-protocol" }
+heapless = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
+embassy-sync = { workspace = true }
+tokio = { version = "1", features = ["full"] }
