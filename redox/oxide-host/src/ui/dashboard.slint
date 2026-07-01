@@ -1,0 +1,31 @@
+import { VerticalBox, HorizontalBox, Gauge } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    in-out property <int> rpm;
+    in-out property <int> boost;
+    in-out property <int> afr;
+    in-out property <int> coolant;
+
+    HorizontalBox {
+        Gauge {
+            value: rpm;
+            minimum: 0;
+            maximum: 9000;
+        }
+        Gauge {
+            value: boost;
+            minimum: -10;
+            maximum: 20;
+        }
+        Gauge {
+            value: afr;
+            minimum: 10;
+            maximum: 18;
+        }
+        Gauge {
+            value: coolant;
+            minimum: 0;
+            maximum: 120;
+        }
+    }
+}

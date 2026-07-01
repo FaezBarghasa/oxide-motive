@@ -1,0 +1,21 @@
+[package]
+name = "oxide-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+postcard = "1.0"
+heapless = "0.8"
+oxide-protocol = { path = "../oxide-protocol" }
+oxide-math = { path = "../oxide-math" }
+slint = "1.5.1"
+tokio-tungstenite = "0.21.0"
+rumqttc = "0.24.0"
+atcommands = "0.7.0"
+ed25519-dalek = "2.1.1"
+sequential-storage = { version = "0.3.1", features = ["defmt"] }
+
+[build-dependencies]
+slint-build = "1.5.1"

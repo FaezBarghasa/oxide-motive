@@ -1,0 +1,9 @@
+[package]
+name = "oxide-hal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-hal-async = "1.0.0"
+embedded-io-async = "0.6.1"
+futures = { version = "0.3.28", default-features = false, features = ["async-await"] }

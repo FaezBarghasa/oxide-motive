@@ -1,0 +1,9 @@
+[package]
+name = "oxide-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxide-protocol = { path = "../oxide-protocol" }
+oxide-math = { path = "../oxide-math" }
+heapless = "0.8"

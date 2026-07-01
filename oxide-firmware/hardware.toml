@@ -1,0 +1,19 @@
+[board]
+name = "Oxide-Motive Pro v1"
+mcu = "STM32H743VIT6"
+
+[pins]
+crank_pin = "PA0"
+cam_pin = "PA1"
+injector_1_pin = "PB1"
+injector_2_pin = "PB2"
+injector_3_pin = "PB3"
+injector_4_pin = "PB4"
+coil_1_pin = "PD0"
+coil_2_pin = "PD1"
+coil_3_pin = "PD2"
+coil_4_pin = "PD3"
+
+[peripherals]
+uart_protocol = "USART1"
+can_bus = "FDCAN1"

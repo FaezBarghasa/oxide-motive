@@ -1,0 +1,5 @@
+[source]
+git = "https://github.com/jrad/oxide-motive.git"
+
+[build]
+template = "cargo"

@@ -1,0 +1,3 @@
+[pins]
+crank_pin = "PA0"
+injector_1_pin = "PB1"

@@ -1,0 +1,12 @@
+[package]
+name = "virtual-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxide-protocol = { path = "../../oxide-protocol" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+postcard = "1.0"
+cobs = "0.2.3"
+heapless = "0.8"

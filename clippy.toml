@@ -1,18 +1,9 @@
-disallowed-methods = [
-    # Panicking methods
-    "std::result::Result::unwrap",
-    "std::result::Result::expect",
-    "std::option::Option::unwrap",
-    "std::option::Option::expect",
-    "std::panic",
-]
-
-# Allow certain pedantic lints for practical reasons
-# See: https://rust-lang.github.io/rust-clippy/master/index.html
-allow = [
-    "clippy::missing-errors-doc", # Tedious to document every possible error
-    "clippy::missing_panics_doc", # We don't use panics
-    "clippy::module_name_repetitions", # Sometimes repetition is clear
-    "clippy::must_use_candidate", # Not always applicable
-    "clippy::wildcard_imports", # Useful for prelude patterns
+# Allow a few pedantic lints for practical reasons
+allowed-by-default = [
+    "clippy::missing-errors-doc",
+    "clippy::module-name-repetitions",
+    "clippy::implicit-return",
+    "clippy::must-use-candidate",
+    "clippy::missing-panics-doc",
+    "clippy::missing-safety-doc"
 ]

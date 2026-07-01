@@ -1,122 +1,175 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
-use heapless::Vec;
-use serde::{Deserialize, Serialize};
+use heapless;
+use serde::{Serialize, Deserialize};
+
+pub mod clock_sync;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum HostToMcu {
-    SyncRequest,
-    ScheduleEvent {
-        channel: u8,
-        timestamp_us: u64,
-        duration_us: u16,
-    },
-    ConfigUpdate,
+    SyncRequest { timestamp_us: u64 },
+    ConfigUpdate { config: EcuConfig },
+    TableUpdate { table_id: u8, x_idx: u8, y_idx: u8, value: f32 },
+    ActuatorTest { channel: u8, duration_ms: u16 },
     Heartbeat,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum McuToHost {
-    SyncResponse,
+    SyncResponse { timestamp_us: u64 },
     TelemetryBatch {
         timestamp_us: u64,
-        sensors: Vec<SensorData, 32>,
+        sensors: heapless::Vec<SensorData, 32>,
+        state: EngineState,
+        rpm: u16,
     },
-    Ack,
+    DtcEvent { dtc_code: u16, freeze_frame: FreezeFrame },
+    Ack { seq: u32 },
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct SensorData {
     pub id: u8,
     pub raw_value: u16,
+    pub physical_value: f32,
     pub status: u8,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct FreezeFrame {
+    pub rpm: u16,
+    pub map: u16,
+    pub tps: u16,
+    pub iat: i16,
+    pub ect: i16,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct EcuConfig {
+    // Placeholder
+    pub injector_size: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
+pub enum EngineState {
+    Offline,
+    Cranking,
+    Running,
+    Stalled,
+    Limp,
+}
+
 pub mod framing {
-    use postcard::from_bytes;
-    use postcard::to_vec;
-    use serde::{Deserialize, Serialize};
-    use heapless::Vec;
+    use super::*;
+    use cobs;
+    use postcard::{from_bytes, to_slice};
 
-
-    pub fn encode_frame<T: Serialize>(msg: &T, buf: &mut [u8]) -> Result<usize, postcard::Error> {
-        let encoded_vec: Vec<u8, 256> = to_vec(msg)?;
-        let cobs_encoded = cobs::encode(&encoded_vec);
-        if buf.len() < cobs_encoded.len() {
-            return Err(postcard::Error::SerializeBufferFull);
-        }
-        buf[..cobs_encoded.len()].copy_from_slice(&cobs_encoded);
-        Ok(cobs_encoded.len())
+    #[derive(Debug)]
+    pub enum EncodeError {
+        PostcardError(postcard::Error),
+        CobsError,
     }
 
-    pub fn decode_frame<'a, T: Deserialize<'a>>(buf: &'a mut [u8]) -> Result<T, postcard::Error> {
-        let mut decoded_cobs = [0u8; 256];
-        let decoded_len = cobs::decode_in_place(&mut buf[..]).map_err(|_| postcard::Error::DeserializeBadEncoding)?;
-        from_bytes(&buf[..decoded_len])
+    #[derive(Debug)]
+    pub enum DecodeError {
+        PostcardError(postcard::Error),
+        CobsError,
+    }
+
+    pub fn encode_frame<'a, T: Serialize>(
+        msg: &T,
+        buf: &'a mut [u8],
+        seq: u32,
+    ) -> Result<usize, EncodeError> {
+        let mut frame_buf = [0u8; 1024]; // Temp buffer for postcard + seq
+        let seq_bytes = seq.to_le_bytes();
+        frame_buf[..4].copy_from_slice(&seq_bytes);
+
+        let serialized = to_slice(msg, &mut frame_buf[4..]).map_err(EncodeError::PostcardError)?;
+        let len_with_seq = serialized.len() + 4;
+
+        let encoded_len = cobs::encode(&frame_buf[..len_with_seq], buf);
+        Ok(encoded_len)
+    }
+
+    pub fn decode_frame<'a, T: serde::de::DeserializeOwned>(
+        buf: &'a mut [u8],
+    ) -> Result<(T, u32), DecodeError> {
+        let decoded_len = cobs::decode_in_place(buf).map_err(|_| DecodeError::CobsError)?;
+        let decoded_slice = &buf[..decoded_len];
+
+        if decoded_slice.len() < 4 {
+            return Err(DecodeError::CobsError); // Not enough data for sequence number
+        }
+
+        let seq_bytes: [u8; 4] = decoded_slice[..4].try_into().unwrap();
+        let seq = u32::from_le_bytes(seq_bytes);
+
+        let msg = from_bytes(&decoded_slice[4..]).map_err(DecodeError::PostcardError)?;
+        Ok((msg, seq))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framing::{decode_frame, encode_frame};
+    use framing::{decode_frame, encode_frame};
     use heapless::Vec;
 
     #[test]
-    fn test_host_to_mcu_sync_request_roundtrip() {
-        let msg = HostToMcu::SyncRequest;
+    fn test_host_to_mcu_roundtrip() {
+        let config = EcuConfig { injector_size: 550.0 };
+        let msg = HostToMcu::ConfigUpdate { config };
         let mut buf = [0u8; 256];
-        let len = encode_frame(&msg, &mut buf).unwrap();
 
-        let mut decode_buf = buf[..len].to_vec();
-        let decoded: HostToMcu = decode_frame(&mut decode_buf).unwrap();
-        assert_eq!(msg, decoded);
+        let encoded_len = encode_frame(&msg, &mut buf, 123).unwrap();
+        let (decoded_msg, seq): (HostToMcu, u32) = decode_frame(&mut buf[..encoded_len]).unwrap();
+
+        assert_eq!(msg, decoded_msg);
+        assert_eq!(seq, 123);
     }
 
     #[test]
-    fn test_host_to_mcu_schedule_event_roundtrip() {
-        let msg = HostToMcu::ScheduleEvent {
-            channel: 1,
-            timestamp_us: 123456789,
-            duration_us: 1000,
-        };
-        let mut buf = [0u8; 256];
-        let len = encode_frame(&msg, &mut buf).unwrap();
-
-        let mut decode_buf = buf[..len].to_vec();
-        let decoded: HostToMcu = decode_frame(&mut decode_buf).unwrap();
-        assert_eq!(msg, decoded);
-    }
-
-    #[test]
-    fn test_mcu_to_host_telemetry_batch_roundtrip() {
+    fn test_mcu_to_host_roundtrip() {
         let mut sensors: Vec<SensorData, 32> = Vec::new();
-        sensors.push(SensorData { id: 1, raw_value: 1023, status: 0 }).unwrap();
-        sensors.push(SensorData { id: 2, raw_value: 512, status: 1 }).unwrap();
-
+        sensors.push(SensorData { id: 1, raw_value: 1023, physical_value: 5.0, status: 0 }).unwrap();
         let msg = McuToHost::TelemetryBatch {
-            timestamp_us: 987654321,
+            timestamp_us: 123456789,
             sensors,
+            state: EngineState::Running,
+            rpm: 3000,
         };
         let mut buf = [0u8; 256];
-        let len = encode_frame(&msg, &mut buf).unwrap();
 
-        let mut decode_buf = buf[..len].to_vec();
-        let decoded: McuToHost = decode_frame(&mut decode_buf).unwrap();
-        assert_eq!(msg, decoded);
+        let encoded_len = encode_frame(&msg, &mut buf, 456).unwrap();
+        let (decoded_msg, seq): (McuToHost, u32) = decode_frame(&mut buf[..encoded_len]).unwrap();
+
+        assert_eq!(msg, decoded_msg);
+        assert_eq!(seq, 456);
     }
 
     #[test]
-    fn test_decode_corrupted_frame() {
+    fn test_cobs_edge_cases() {
+        let msg = HostToMcu::Heartbeat;
         let mut buf = [0u8; 256];
-        let msg = HostToMcu::SyncRequest;
-        let len = encode_frame(&msg, &mut buf).unwrap();
 
-        // Corrupt the buffer
-        buf[2] = !buf[2];
+        // Test with buffer full of zeros
+        let mut zero_buf = [0u8; 64];
+        let encoded_len = encode_frame(&msg, &mut zero_buf, 0).unwrap();
+        let (decoded_msg, _): (HostToMcu, _) = decode_frame(&mut zero_buf[..encoded_len]).unwrap();
+        assert_eq!(msg, decoded_msg);
 
-        let mut decode_buf = buf[..len].to_vec();
-        let decoded: Result<HostToMcu, _> = decode_frame(&mut decode_buf);
-        assert!(decoded.is_err());
+        // Test with buffer full of 0xFF
+        let mut ff_buf = [0xFFu8; 64];
+        let encoded_len = encode_frame(&msg, &mut ff_buf, 0).unwrap();
+        let (decoded_msg, _): (HostToMcu, _) = decode_frame(&mut ff_buf[..encoded_len]).unwrap();
+        assert_eq!(msg, decoded_msg);
+    }
+
+    #[test]
+    fn test_decode_corrupted() {
+        let mut buf = [1, 2, 3, 4, 5, 0]; // Invalid COBS frame
+        let result: Result<(HostToMcu, u32), _> = decode_frame(&mut buf);
+        assert!(result.is_err());
     }
 }

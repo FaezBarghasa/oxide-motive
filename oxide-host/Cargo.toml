@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 oxide-protocol = { path = "../oxide-protocol" }
-heapless = { workspace = true }
-postcard = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+anyhow = { workspace = true }
 serde = { workspace = true }
-embassy-sync = { workspace = true }
-tokio = { version = "1", features = ["full"] }
+postcard = { workspace = true }
+heapless = { workspace = true }
+cobs = { workspace = true }
