@@ -6,7 +6,8 @@ members = [
     "oxide-hal",
     "oxide-math",
     "oxide-mp1",
-    "oxide-esp32-host", # Added oxide-esp32-host to workspace members
+    "oxide-esp32-host",
+    "oxide-core",
 ]
 
 [workspace.dependencies]
