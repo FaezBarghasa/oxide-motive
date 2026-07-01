@@ -4,9 +4,10 @@
 extern crate std;
 
 use serde::{Deserialize, Serialize};
-use heapless::{Vec, FnvIndexMap};
+use heapless::{Vec, Deque};
 use postcard::{to_vec_cobs, from_bytes_cobs, Error as PostcardError};
 use cobs::Error as CobsError;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 /// Error type for protocol encoding/decoding.
 #[derive(Debug, PartialEq)]
@@ -36,6 +37,15 @@ impl From<CobsError> for ProtocolError {
     fn from(err: CobsError) -> Self {
         ProtocolError::Cobs(err)
     }
+}
+
+// --- Common types ---
+
+/// CAN bus frame definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CanFrame {
+    pub id: u32,
+    pub data: Vec<u8, 8>, // Max 8 bytes for CAN data
 }
 
 // --- Host to MCU messages ---
@@ -149,7 +159,110 @@ pub enum McuToHost {
     Ack { seq: u32 },
 }
 
-/// Framing module using COBS (Consistent Overhead Byte Stuffing)
+// --- Shared Memory Layout for STM32MP1 Dual-Core ---
+
+/// Maximum size for a serialized message in shared memory.
+/// This needs to be carefully chosen based on the largest message type.
+const MAX_SHARED_MESSAGE_SIZE: usize = 256;
+
+/// Shared memory layout for inter-processor communication between Cortex-A7 (Host) and Cortex-M4 (MCU).
+/// This struct defines the memory regions and their purpose.
+///
+/// IMPORTANT: The actual memory layout will be determined by the linker script and
+/// careful placement of this static variable in the shared SRAM region.
+/// The `#[repr(C)]` and `#[repr(align(...))]` attributes are crucial for ensuring
+/// a consistent memory layout across different compilers and architectures.
+#[repr(C, align(4))] // Align to 4 bytes for AtomicU32 and general access efficiency
+pub struct SharedMemoryLayout {
+    /// Heartbeat flags for both cores.
+    /// Bit 0: A7 heartbeat, Bit 1: M4 heartbeat.
+    pub heartbeat_flags: AtomicU32,
+
+    /// Ring buffer for telemetry data from M4 to A7.
+    /// M4 writes, A7 reads.
+    pub telemetry_ring_buffer: SpscQueue<McuToHost, 16>, // 16 messages capacity
+
+    /// Ring buffer for commands from A7 to M4.
+    /// A7 writes, M4 reads.
+    pub command_ring_buffer: SpscQueue<HostToMcu, 8>, // 8 messages capacity
+
+    /// Mailbox for pushing 3D table updates.
+    /// This could be a simpler mechanism if updates are infrequent and large,
+    /// or a dedicated queue if they are frequent. For now, a single slot.
+    pub table_update_mailbox: Option<TableUpdate>, // Option to indicate if data is present
+}
+
+/// A simplified SPSC queue for shared memory.
+/// This is a basic implementation and might need more robust synchronization
+/// (e.g., hardware semaphores on MP1) for production use.
+#[repr(C, align(4))]
+pub struct SpscQueue<T, const N: usize> {
+    head: AtomicU32,
+    tail: AtomicU32,
+    buffer: [core::mem::MaybeUninit<T>; N],
+}
+
+impl<T, const N: usize> SpscQueue<T, N> {
+    pub const fn new() -> Self {
+        Self {
+            head: AtomicU32::new(0),
+            tail: AtomicU32::new(0),
+            buffer: unsafe { core::mem::MaybeUninit::uninit().assume_init() },
+        }
+    }
+
+    /// Attempts to enqueue an item. Returns `Ok(())` if successful, `Err(item)` if the queue is full.
+    pub fn enqueue(&self, item: T) -> Result<(), T> {
+        let head = self.head.load(Ordering::Relaxed);
+        let next_head = (head + 1) % N as u32;
+
+        if next_head == self.tail.load(Ordering::Acquire) {
+            // Queue is full
+            return Err(item);
+        }
+
+        unsafe {
+            self.buffer[head as usize].as_ptr().write(item);
+        }
+        self.head.store(next_head, Ordering::Release);
+        Ok(())
+    }
+
+    /// Attempts to dequeue an item. Returns `Some(item)` if successful, `None` if the queue is empty.
+    pub fn dequeue(&self) -> Option<T> {
+        let tail = self.tail.load(Ordering::Relaxed);
+        if tail == self.head.load(Ordering::Acquire) {
+            // Queue is empty
+            return None;
+        }
+
+        let item = unsafe { self.buffer[tail as usize].as_ptr().read() };
+        self.tail.store((tail + 1) % N as u32, Ordering::Release);
+        Some(item)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.head.load(Ordering::Acquire) == self.tail.load(Ordering::Acquire)
+    }
+
+    pub fn is_full(&self) -> bool {
+        (self.head.load(Ordering::Acquire) + 1) % N as u32 == self.tail.load(Ordering::Acquire)
+    }
+}
+
+
+/// A simplified version of HostToMcu::TableUpdate for direct shared memory.
+/// This avoids serializing/deserializing the full HostToMcu enum for frequent updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableUpdate {
+    pub table_id: u8,
+    pub x_idx: u8,
+    pub y_idx: u8,
+    pub value: f32,
+}
+
+
+// --- Framing module using COBS (Consistent Overhead Byte Stuffing) ---
 pub mod framing {
     use super::*;
     use core::convert::TryInto;
@@ -238,7 +351,7 @@ pub mod clock_sync {
         pub filter_alpha: f64,   // Exponential smoothing factor (0.0 to 1.0)
         // History for quality calculation or more advanced filtering
         #[cfg(feature = "std")] // Use Vec for std, fixed-size array for no_std
-        history: Vec<i64, 10>, // Store last 10 offset measurements
+        history: Deque<i64, 10>, // Store last 10 offset measurements
     }
 
     impl ClockSync {
@@ -253,7 +366,7 @@ pub mod clock_sync {
                 last_sync_time: 0,
                 filter_alpha,
                 #[cfg(feature = "std")]
-                history: Vec::new(),
+                history: Deque::new(),
             }
         }
 
@@ -301,8 +414,6 @@ pub mod clock_sync {
             // Simple skew calculation (can be improved with more history)
             // For now, we'll assume skew is relatively constant or handled by offset adjustments
             // A more robust skew calculation would require multiple offset measurements over time.
-            // For a basic implementation, we might not update skew_ppm directly from a single exchange.
-            // Let's keep skew_ppm as 0.0 for now, or implement a very basic update if needed.
             // For this task, the prompt implies skew_ppm is updated, so let's do a simple one.
             let time_since_last_sync = host_tx_time.saturating_sub(self.last_sync_time);
             if self.last_sync_time != 0 && time_since_last_sync > 0 {
@@ -319,9 +430,9 @@ pub mod clock_sync {
             #[cfg(feature = "std")]
             {
                 if self.history.len() == self.history.capacity() {
-                    self.history.remove(0);
+                    self.history.pop_front();
                 }
-                self.history.push(new_offset_ns as i64).unwrap(); // unwrap is safe due to capacity check
+                self.history.push_back(new_offset_ns as i64);
             }
 
             let quality = self.calculate_quality();
@@ -754,7 +865,7 @@ mod tests {
         let mut mcu_time_offset_from_host_ns = 0.0;
         let mut host_time = 0;
 
-        for i in 0..100 { // Simulate 100 exchanges
+        for _i in 0..100 { // Simulate 100 exchanges
             let host_tx_time = host_time;
             let mcu_rx_time = host_tx_time + (mcu_time_offset_from_host_ns / 1000.0) as u64;
             let mcu_tx_time = mcu_rx_time; // Assume no processing delay on MCU
@@ -795,6 +906,42 @@ mod tests {
         cs.process_sync_exchange(300, 300 - 5, 300 - 5, 300 + 10); // -5us offset, 10us delay
         #[cfg(feature = "std")]
         assert!(cs.calculate_quality() > 0.0); // Quality should reflect variance
+    }
+
+    #[test]
+    fn test_spsc_queue_enqueue_dequeue() {
+        let queue = SpscQueue::<u32, 4>::new();
+        assert!(queue.is_empty());
+        assert!(!queue.is_full());
+
+        assert_eq!(queue.enqueue(1), Ok(()));
+        assert_eq!(queue.enqueue(2), Ok(()));
+        assert_eq!(queue.enqueue(3), Ok(()));
+        assert!(!queue.is_empty());
+        assert!(queue.is_full()); // Capacity is N-1 for SPSC
+
+        assert_eq!(queue.enqueue(4), Err(4)); // Should be full
+
+        assert_eq!(queue.dequeue(), Some(1));
+        assert_eq!(queue.dequeue(), Some(2));
+        assert_eq!(queue.dequeue(), Some(3));
+        assert!(queue.is_empty());
+        assert!(!queue.is_full());
+
+        assert_eq!(queue.dequeue(), None);
+    }
+
+    #[test]
+    fn test_spsc_queue_wraparound() {
+        let queue = SpscQueue::<u32, 2>::new(); // Capacity 1
+        assert_eq!(queue.enqueue(10), Ok(()));
+        assert!(queue.is_full());
+        assert_eq!(queue.dequeue(), Some(10));
+        assert!(queue.is_empty());
+
+        assert_eq!(queue.enqueue(20), Ok(()));
+        assert_eq!(queue.dequeue(), Some(20));
+        assert!(queue.is_empty());
     }
 }
 

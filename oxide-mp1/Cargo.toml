@@ -1,0 +1,20 @@
+[package]
+name = "oxide-mp1"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Dependencies for STM32MP1 dual-core implementation
+# This will include PACs, HALs, and IPC crates
+cortex-m = { version = "0.7.7", optional = true }
+cortex-m-rt = { version = "0.7.0", optional = true }
+stm32mp1xx-hal = { version = "0.1.0", optional = true } # Placeholder, replace with actual
+stm32mp1 = { version = "0.1.0", features = ["rt", "stm32mp157"], optional = true } # PAC
+heapless = "0.8.0" # For ring buffers
+oxide-protocol = { path = "../oxide-protocol", features = ["std"] } # For shared memory layout, enable std for A7
+memmap2 = { version = "0.0.0", optional = true } # Placeholder, replace with actual
+
+[features]
+default = []
+m4 = ["stm32mp1xx-hal", "stm32mp1", "cortex-m", "cortex-m-rt"] # For the Cortex-M4 side
+a7 = ["memmap2"] # For the Cortex-A7 side (likely uses std Rust and mmap)
