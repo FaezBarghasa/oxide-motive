@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# No_std compatible traits for hardware abstraction
+# No dependencies here, as this crate defines traits that other HALs will implement.
+# It should be as minimal as possible.

@@ -4,4 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-heapless = { workspace = true }
+# No_std compatible math operations
+libm = "0.2" # For floating point math in no_std
+num-traits = { version = "0.2", default-features = false } # For generic number traits
+serde = { workspace = true, optional = true } # Optional for serialization of tables
+heapless = { workspace = true, optional = true } # Optional for heapless data structures
+
+[features]
+std = ["serde/std", "heapless/serde"] # Enable std features for testing/host
+default = [] # No std by default for no_std compatibility

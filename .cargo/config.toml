@@ -1,14 +1,11 @@
+[build]
+target = "thumbv7em-none-eabihf" # Default target for convenience
+
 [target.thumbv7em-none-eabihf]
-runner = "probe-run --chip STM32H743VITx"
-rustflags = [
-  "-C", "link-arg=-Tlink.x",
-]
+runner = "probe-run --chip STM32H743VITx" # Example runner for flashing/debugging
 
 [target.x86_64-unknown-redox]
-# Redox-specific flags would go here
+# No specific runner needed for Redox OS, it's a standard build target
 
 [target.x86_64-unknown-linux-gnu]
-# Linux-specific flags would go here
-
-[build]
-target = "x86_64-unknown-linux-gnu"
+# No specific runner needed for Linux, it's a standard build target

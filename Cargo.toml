@@ -5,10 +5,7 @@ members = [
     "oxide-host",
     "oxide-hal",
     "oxide-math",
-    "oxide-sim/mcu",
-    "oxide-sim/host",
 ]
-resolver = "2"
 
 [workspace.dependencies]
 heapless = "0.8"
@@ -16,13 +13,3 @@ postcard = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 rtic = "2.1"
 cortex-m-rtic = "2.1"
-cobs = "0.2.3"
-
-# HALs
-stm32h7xx-hal = { version = "0.16", features = ["stm32h743v", "rt"], optional = true }
-s32k-hal = { version = "0.1", optional = true } # Placeholder version
-renesas-ra = { version = "0.1", optional = true } # Placeholder version
-
-# Host dependencies
-tokio = { version = "1", features = ["full"], optional = true }
-anyhow = { version = "1.0", optional = true }
