@@ -1,47 +1,53 @@
 use std::env;
-use std::fs::File;
-use std::io::{Read, Write};
+use std::fs;
 use std::path::Path;
-use syn::{File as SynFile, Item};
+use syn::{File, Item, Type, Ident};
+use quote::quote;
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("generated_slint_types.slint");
-    let mut slint_file = File::create(&dest_path).unwrap();
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let src_path = Path::new(&crate_dir).join("src").join("lib.rs");
+    let content = fs::read_to_string(src_path).expect("Could not read src/lib.rs");
 
-    let mut file_content = String::new();
-    let mut f = File::open("src/lib.rs").unwrap();
-    f.read_to_string(&mut file_content).unwrap();
+    let ast: File = syn::parse_file(&content).expect("Could not parse src/lib.rs");
 
-    let ast: SynFile = syn::parse_file(&file_content).unwrap();
+    let mut slint_structs = String::new();
 
-    for item in ast.items {
+    for item in &ast.items {
         if let Item::Struct(item_struct) = item {
-            let has_oxide_slint_derive = item_struct.attrs.iter().any(|attr| {
-                if let Ok(meta) = attr.meta.require_list() {
-                    meta.path.is_ident("derive") && meta.tokens.to_string().contains("OxideSlint")
-                } else {
-                    false
-                }
-            });
+            if item_struct.attrs.iter().any(|attr| attr.path().is_ident("OxideSlint")) {
+                let struct_name = &item_struct.ident;
+                let mut slint_fields = String::new();
 
-            if has_oxide_slint_derive {
-                writeln!(slint_file, "export struct {} {{", item_struct.ident).unwrap();
-                for field in item_struct.fields.iter() {
+                for field in &item_struct.fields {
                     let field_name = field.ident.as_ref().unwrap();
                     let field_type = &field.ty;
-                    let type_str = quote::quote!(#field_type).to_string();
-                    let slint_type = match type_str.as_str() {
-                        "u32" | "i32" => "int",
-                        "f32" => "float",
-                        "bool" => "bool",
-                        "String" | "& str" => "string",
-                        _ => "string", // Default to string for complex types
-                    };
-                    writeln!(slint_file, "    {}: {},", field_name, slint_type).unwrap();
+                    let slint_type = rust_to_slint_type(field_type);
+                    slint_fields.push_str(&format!("    {}: {},\n", field_name, slint_type));
                 }
-                writeln!(slint_file, "}}").unwrap();
+
+                slint_structs.push_str(&format!(
+                    "export struct {} {{\n{}}}\n\n",
+                    struct_name, slint_fields
+                ));
             }
         }
+    }
+
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let dest_path = Path::new(&out_dir).join("generated.slint");
+    fs::write(dest_path, slint_structs).unwrap();
+
+    println!("cargo:rerun-if-changed=src/lib.rs");
+}
+
+fn rust_to_slint_type(ty: &Type) -> String {
+    let type_str = quote!(#ty).to_string();
+    match type_str.as_str() {
+        "f32" | "f64" => "float".to_string(),
+        "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => "int".to_string(),
+        "bool" => "bool".to_string(),
+        "String" | "& str" => "string".to_string(),
+        _ => "string".to_string(), // Default to string for complex types
     }
 }

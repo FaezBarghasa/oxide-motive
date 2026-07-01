@@ -1,0 +1,18 @@
+[package]
+name = "oxide-hmi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxide-core = { path = "../oxide-core" }
+oxide-telemetry = { path = "../oxide-telemetry" }
+slint = "1.5"
+slintcn = { path = "../slintcn" }
+embassy-executor = "0.5.0"
+embassy-sync = "0.5.0"
+
+[build-dependencies]
+slint-build = "1.5"
+
+[features]
+default = []

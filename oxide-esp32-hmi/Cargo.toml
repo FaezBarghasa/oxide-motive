@@ -1,0 +1,12 @@
+[package]
+name = "oxide-esp32-hmi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+slint = "1.5"
+esp-idf-hal = "0.42.5"
+esp-idf-svc = "0.47.3"
+
+[features]
+default = []

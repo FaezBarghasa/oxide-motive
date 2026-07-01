@@ -1,0 +1,56 @@
+import { RadialGauge, RollingChart, Led, Arc } from "slintcn";
+
+export global OxideVehicleState {
+    in-out property <float> speed;
+    in-out property <int> rpm;
+    in-out property <int> soc;
+    in-out property <[bool]> warning_leds: [false, false, false];
+}
+
+component AppWindow inherits Window {
+    width: 800px;
+    height: 480px;
+    background: #000;
+
+    HorizontalLayout {
+        padding: 20px;
+        spacing: 20px;
+
+        RadialGauge {
+            value: OxideVehicleState.speed;
+            max-value: 240;
+            unit: "km/h";
+        }
+
+        RadialGauge {
+            value: OxideVehicleState.rpm;
+            max-value: 8000;
+            unit: "RPM";
+        }
+    }
+
+    Arc {
+        x: 350px;
+        y: 300px;
+        width: 100px;
+        height: 100px;
+        value: OxideVehicleState.soc;
+        max-value: 100;
+    }
+
+    HorizontalLayout {
+        x: 250px;
+        y: 20px;
+        Led { active: OxideVehicleState.warning_leds[0]; color: #f00; }
+        Led { active: OxideVehicleState.warning_leds[1]; color: #ff0; }
+        Led { active: OxideVehicleState.warning_leds[2]; color: #f00; }
+    }
+
+    RollingChart {
+        x: 50px;
+        y: 350px;
+        width: 700px;
+        height: 100px;
+        // This needs a model to be populated from Rust
+    }
+}

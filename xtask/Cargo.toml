@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+std = { package = "std", version = "1.0.0" }
+xmas-elf = "0.9.1"
+anyhow = "1.0.79"
+which = "6.0.0"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

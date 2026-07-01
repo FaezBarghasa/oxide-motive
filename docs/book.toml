@@ -1,0 +1,9 @@
+[book]
+title = "The Oxide Tech SDV Book"
+author = "Oxide Tech"
+description = "The official documentation for the Oxide Tech Software-Defined Vehicle platform."
+
+[output.html]
+mathjax-support = true
+git-repository-url = "https://github.com/your-repo/oxide-motive"
+edit-url-template = "https://github.com/your-repo/oxide-motive/edit/main/{path}"

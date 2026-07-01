@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use serde::{Deserialize, Serialize};
+use heapless::Vec;
 
 // This is a marker trait for the build script
 pub trait OxideSlint {}
@@ -32,12 +33,28 @@ pub struct HmiCommand {
     pub action: u8,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum UdsRequest {
+    DiagnosticSessionControl(u8),
+    ReadDataByIdentifier(u16),
+    // Add other UDS services as needed
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum UdsResponse {
+    DiagnosticSessionControl(u8),
+    ReadDataByIdentifier(u16, Vec<u8, 64>),
+    NegativeResponse(u8, u8), // Service ID, NRC
+}
+
+
 slint::include_modules!();
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use postcard::{from_bytes, to_allocvec};
+    use postcard::{from_bytes, to_vec};
+    use heapless::Vec;
 
     #[test]
     fn test_telemetry_serialization_deserialization() {
@@ -48,7 +65,8 @@ mod tests {
             temp: 95,
         };
 
-        let serialized = to_allocvec(&telemetry).unwrap();
+        let mut buf = [0u8; 32];
+        let serialized = to_vec::<_, Vec<u8, 32>>(&telemetry, &mut buf).unwrap();
         let deserialized: VehicleTelemetry = from_bytes(&serialized).unwrap();
 
         assert_eq!(telemetry, deserialized);
