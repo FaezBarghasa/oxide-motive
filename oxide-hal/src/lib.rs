@@ -1,38 +1,38 @@
 #![no_std]
 
-pub mod mock; // Placeholder for mock implementation
+pub mod timer;
+pub mod adc;
+pub mod can;
+pub mod pwm;
+pub mod watchdog;
+pub mod flash;
 
-#[cfg(feature = "stm32g4")]
-pub mod stm32g4;
-
-#[cfg(feature = "nxp_s32k")]
-pub mod nxp_s32k;
-
-pub trait HighResAdc {
-    type Error;
-    fn read_channel(&mut self, channel: u8) -> Result<u16, Self::Error>;
-    fn read_all_dma(&mut self, buffer: &mut [u16]) -> Result<(), Self::Error>;
-}
-
+// Example: EngineTimer trait (critical for ignition scheduling)
 pub trait EngineTimer {
     type Error;
-    fn set_frequency(&mut self, freq_hz: u32) -> Result<(), Self::Error>;
+    fn counter(&self) -> u32;
     fn set_compare(&mut self, channel: u8, ticks: u32) -> Result<(), Self::Error>;
-    fn get_counter(&self) -> u32;
-    fn enable_interrupt(&mut self) -> Result<(), Self::Error>;
+    fn enable_compare_interrupt(&mut self, channel: u8);
+    fn clear_interrupt(&mut self, channel: u8);
+    fn frequency(&self) -> u32; // Returns timer clock in Hz
 }
 
-pub trait TriggerCapture {
+// Example: Adc trait
+pub trait Adc {
     type Error;
-    fn capture_rising_edge(&mut self) -> Result<u32, Self::Error>;
-    fn capture_falling_edge(&mut self) -> Result<u32, Self::Error>;
+    fn read_all(&mut self) -> Result<heapless::Vec<u16, 16>, Self::Error>;
+    fn calibrate(&mut self) -> Result<(), Self::Error>;
 }
 
-// Placeholder for CanFrame, will be defined in oxide-protocol
-pub struct CanFrame;
+// Example: Watchdog trait
+pub trait Watchdog {
+    fn init(&mut self, timeout_ms: u32);
+    fn feed(&mut self);
+}
 
-pub trait CanBus {
+// Example: Flash trait for A/B partition management
+pub trait Flash {
     type Error;
-    fn send_frame(&mut self, id: u32, data: &[u8]) -> Result<(), Self::Error>;
-    fn receive_frame(&mut self, buffer: &mut CanFrame) -> Result<(), Self::Error>;
+    fn erase_bank(&mut self, bank: u8) -> Result<(), Self::Error>;
+    fn program_page(&mut self, page_address: u32, data: &[u8]) -> Result<(), Self::Error>;
 }
