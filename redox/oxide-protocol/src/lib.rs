@@ -36,6 +36,8 @@ pub struct ClockSync {
     pub offset_ns: i64,
     pub skew_ppm: f64,
     alpha: f64, // for exponential moving average
+    last_host_time: Option<u64>,
+    last_mcu_time: Option<u64>,
 }
 
 impl ClockSync {
@@ -44,6 +46,8 @@ impl ClockSync {
             offset_ns: 0,
             skew_ppm: 0.0,
             alpha: 0.1, // Adjust this for more or less smoothing
+            last_host_time: None,
+            last_mcu_time: None,
         }
     }
 
@@ -60,8 +64,16 @@ impl ClockSync {
         let new_offset = offset - delay;
         self.offset_ns = (self.offset_ns as f64 * (1.0 - self.alpha) + new_offset as f64 * self.alpha) as i64;
 
-        // Skew calculation is more involved, so I'll leave a TODO for now.
-        // self.skew_ppm = ...
+        if let (Some(last_host), Some(last_mcu)) = (self.last_host_time, self.last_mcu_time) {
+            let host_elapsed = host_tx_time.saturating_sub(last_host);
+            let mcu_elapsed = mcu_rx_time.saturating_sub(last_mcu);
+            if host_elapsed > 0 && mcu_elapsed > 0 {
+                let current_skew = ((mcu_elapsed as f64 - host_elapsed as f64) / host_elapsed as f64) * 1_000_000.0;
+                self.skew_ppm = self.skew_ppm * (1.0 - self.alpha) + current_skew * self.alpha;
+            }
+        }
+        self.last_host_time = Some(host_tx_time);
+        self.last_mcu_time = Some(mcu_rx_time);
     }
 
     pub fn translate_mcu_time_to_host_time(&self, mcu_time: u64) -> u64 {

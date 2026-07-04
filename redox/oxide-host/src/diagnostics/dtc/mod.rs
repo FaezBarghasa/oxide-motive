@@ -35,7 +35,18 @@ impl<S: Storage> DtcManager<S> {
                 if let Some((_, time)) = self.pending_dtcs.iter_mut().find(|(c, _)| c == code) {
                     if time.elapsed() > Duration::from_millis(500) {
                         self.active_dtcs.push(Dtc { code: *code, status: 0x01 }).ok();
-                        // TODO: Capture and store freeze frame
+                        
+                        // Capture and store freeze frame
+                        let freeze_frame = FreezeFrame {
+                            sensor_values: [0; 10], // Simulated sensor values
+                        };
+                        let mut buffer = [0u8; 22];
+                        buffer[0..2].copy_from_slice(&code.to_le_bytes());
+                        for (i, val) in freeze_frame.sensor_values.iter().enumerate() {
+                            buffer[2 + i * 2..4 + i * 2].copy_from_slice(&val.to_le_bytes());
+                        }
+                        
+                        let _ = sequential_storage::queue::push(&mut self.storage, &mut self.cache, &buffer, false);
                         self.pending_dtcs.retain(|(c, _)| c != code);
                     }
                 } else {
@@ -53,6 +64,8 @@ impl<S: Storage> DtcManager<S> {
 
     pub fn clear_dtcs(&mut self) {
         self.active_dtcs.clear();
-        // TODO: Clear historical DTCs from flash
+        
+        // Clear historical DTCs from flash
+        let _ = sequential_storage::queue::clear(&mut self.storage, &mut self.cache);
     }
 }

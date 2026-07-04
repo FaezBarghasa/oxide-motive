@@ -1,4 +1,7 @@
 use embassy_stm32::interrupt;
+use embassy_stm32::pac;
+use core::cell::RefCell;
+use critical_section::Mutex;
 
 #[derive(Debug, PartialEq)]
 pub enum SyncState {
@@ -13,8 +16,10 @@ pub struct TriggerDecoder {
     pub rpm: u32,
 }
 
+pub static DECODER: Mutex<RefCell<TriggerDecoder>> = Mutex::new(RefCell::new(TriggerDecoder::new()));
+
 impl TriggerDecoder {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             tooth_count: 0,
             sync_state: SyncState::Searching,
@@ -46,6 +51,13 @@ impl TriggerDecoder {
 
 #[interrupt]
 fn TIM3() {
-    // TODO: Get timestamp from input capture register
-    // TODO: Call trigger_decoder.process_edge(timestamp)
+    critical_section::with(|cs| {
+        unsafe {
+            let timestamp = pac::TIM3.ccr(0).read();
+            let mut decoder = DECODER.borrow(cs).borrow_mut();
+            decoder.process_edge(timestamp);
+            
+            pac::TIM3.sr().modify(|w| w.set_cc1if(false));
+        }
+    });
 }

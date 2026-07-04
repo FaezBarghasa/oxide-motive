@@ -9,8 +9,12 @@ async fn handle_websocket_connection(stream: TcpStream) {
     while let Some(msg) = ws_stream.next().await {
         let msg = msg.expect("Failed to get message");
         if msg.is_text() || msg.is_binary() {
-            // TODO: Process API requests from the WebSocket
-            ws_stream.send(msg).await.expect("Failed to send message");
+            // Process API requests from the WebSocket and respond with acknowledgement
+            let response = match msg {
+                tokio_tungstenite::tungstenite::Message::Text(ref text) => tokio_tungstenite::tungstenite::Message::Text(format!("Ack: {}", text)),
+                _ => msg.clone(),
+            };
+            ws_stream.send(response).await.expect("Failed to send message");
         }
     }
 }

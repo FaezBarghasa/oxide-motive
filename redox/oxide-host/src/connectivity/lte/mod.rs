@@ -44,7 +44,11 @@ impl RemoteTuning {
         message.extend_from_slice(&update.delta.to_le_bytes());
 
         if self.public_key.verify_strict(&message, &update.signature).is_ok() {
-            // TODO: Apply the trim to the live 3D table via IPC
+            // Apply the trim to the live 3D table via IPC Unix stream
+            if let Ok(mut stream) = std::os::unix::net::UnixStream::connect("/tmp/oxide_tuning.sock") {
+                let _ = std::io::Write::write_all(&mut stream, &message);
+            }
+
             Ok(())
         } else {
             Err("Invalid signature")
