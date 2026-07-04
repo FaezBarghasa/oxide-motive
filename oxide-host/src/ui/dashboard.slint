@@ -1,0 +1,33 @@
+import { VerticalBox, HorizontalBox, Gauge, Label } from "std-widgets.slint";
+
+export component Dashboard inherits Window {
+    in-out property <int> rpm;
+    in-out property <float> map_kpa;
+    in-out property <float> afr;
+    in-out property <float> ignition_advance;
+
+    title: "Oxide Motive Dashboard";
+    width: 800px;
+    height: 480px;
+    background: #282c34;
+
+    HorizontalBox {
+        alignment: center;
+        spacing: 20px;
+        padding: 20px;
+
+        Gauge {
+            value: root.rpm;
+            minimum: 0;
+            maximum: 8000;
+            primary-color: #61afef;
+        }
+
+        VerticalBox {
+            Label { text: "RPM: \{root.rpm}"; color: white; }
+            Label { text: "MAP: \{root.map_kpa} kPa"; color: white; }
+            Label { text: "AFR: \{root.afr}"; color: white; }
+            Label { text: "Ignition: \{root.ignition_advance} deg"; color: white; }
+        }
+    }
+}

@@ -1,0 +1,16 @@
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  # Linker script
+  "-C", "link-arg=-Tmemory.x",
+
+  # Linker optimizations
+  "-C", "link-arg=--gc-sections",
+
+  # Code generation optimizations
+  "-C", "lto=fat",
+  "-C", "codegen-units=1",
+  "-C", "opt-level=s",
+]
+
+[build]
+target = "thumbv7em-none-eabihf"

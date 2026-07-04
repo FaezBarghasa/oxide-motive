@@ -4,47 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Workspace dependencies
-oxide-protocol = { path = "../oxide-protocol", features = ["std"] }
-oxide-math = { path = "../oxide-math", features = ["std"] }
-
-# Async runtime
+slint = { version = "1.5", default-features = false, features = ["std", "backend-linuxkms", "renderer-skia-opengl"] }
 tokio = { version = "1", features = ["full"] }
-
-# Serialization/Deserialization
-serde = { workspace = true, features = ["derive"] }
-postcard = { workspace = true, features = ["std"] }
-serde_json = "1.0"
-
-# Logging
-log = "0.4"
-env_logger = "0.10"
-
-# CLI arguments
-clap = { version = "4", features = ["derive"] }
-
-# Error handling
+serde = { version = "1.0", features = ["derive"] }
+postcard = "1.0"
+serialport = "4.2"
 anyhow = "1.0"
+crc32fast = "1.3"
+heapless = "0.7"
 
-# For networking (TCP, WebSocket, MQTT)
-tokio-serial = "5.4" # For UART/Serial communication
-tokio-tungstenite = "0.20" # For WebSocket
-rumqttc = "0.22" # For MQTT
-url = "2.5" # For URL parsing in WebSocket
-
-# For crypto (OTA)
-ed25519-dalek = { version = "2.1", features = ["serde"] }
-rand = "0.8" # For generating keys
-
-# For file I/O
-tokio-fs = "0.1" # Async file I/O (deprecated, use tokio::fs directly)
-async-std = "1.12" # Alternative async runtime for file I/O if needed
-
-# For config file parsing
-toml = "0.8"
-
-[dev-dependencies]
-divan = "0.1" # For benchmarking
-
-[features]
-default = [] # No special features by default
+[build-dependencies]
+slint-build = "1.5"

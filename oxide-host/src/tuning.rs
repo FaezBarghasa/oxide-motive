@@ -1,87 +1,74 @@
-use crate::logger::LogPlayback;
-use oxide_protocol::{HostToMcu, McuConnection, TelemetryBatch};
-use oxide_math::Table3D;
+use anyhow::{Result, anyhow};
+use tokio::sync::mpsc;
+use crate::{HostToMcu, McuToHost, framing};
+use crate::oxide_protocol::TuningCommand;
 
-pub struct AutoVeLearner {
-    target_lambda: f32,
-    learning_rate: f32,
-    deadband: (f32, f32),
-    min_conditions: LearningConditions,
+pub enum CommError {
+    SendError,
+    AckTimeout,
+    NakReceived,
 }
 
-pub struct LearningConditions {
-    pub rpm_stable_threshold: u16,
-    pub tps_stable_threshold: f32,
-    pub min_coolant_temp: f32,
+pub struct TuningManager {
+    mcu_tx: mpsc::Sender<HostToMcu>,
+    // This would be a channel to receive acks from the serial task
+    // ack_rx: mpsc::Receiver<McuToHost>,
 }
 
-pub struct TableUpdate {
-    pub table_id: u8,
-    pub x_idx: u8,
-    pub y_idx: u8,
-    pub value: f32,
-}
-
-impl AutoVeLearner {
-    pub fn new() -> Self {
-        Self {
-            target_lambda: 1.0,
-            learning_rate: 0.1,
-            deadband: (0.98, 1.02),
-            min_conditions: LearningConditions {
-                rpm_stable_threshold: 100,
-                tps_stable_threshold: 1.0,
-                min_coolant_temp: 80.0,
-            },
-        }
+impl TuningManager {
+    pub fn new(mcu_tx: mpsc::Sender<HostToMcu>) -> Self {
+        Self { mcu_tx }
     }
 
-    pub fn analyze_log(&self, log: &LogPlayback) -> Vec<TableUpdate> {
-        let mut updates = Vec::new();
-        let mut last_rpm = 0;
-        let mut last_tps = 0.0;
+    pub async fn update_map_cell(&mut self, table_id: u8, row: u8, col: u8, new_val: f32) -> Result<(), CommError> {
+        let command = TuningCommand::WriteTableValue {
+            table_id,
+            row,
+            col,
+            value: new_val,
+        };
+        let message = HostToMcu::Tuning(command);
 
-        for entry in log {
-            let ect = entry.sensors.iter().find(|s| s.id == 4).map_or(0.0, |s| s.physical_value);
-            let tps = entry.sensors.iter().find(|s| s.id == 2).map_or(0.0, |s| s.physical_value);
-            let lambda = entry.sensors.iter().find(|s| s.id == 6).map_or(1.0, |s| s.physical_value);
+        self.mcu_tx.send(message).await.map_err(|_| CommError::SendError)?;
 
-            if ect > self.min_conditions.min_coolant_temp &&
-               (entry.rpm as i16 - last_rpm as i16).abs() < self.min_conditions.rpm_stable_threshold as i16 &&
-               (tps - last_tps).abs() < self.min_conditions.tps_stable_threshold {
-
-                let error = lambda / self.target_lambda;
-                if error < self.deadband.0 || error > self.deadband.1 {
-                    let correction = 1.0 + (error - 1.0) * self.learning_rate;
-                    // In a real scenario, we'd get the current VE value and apply the correction
-                    let new_ve = 50.0 * correction;
-                    updates.push(TableUpdate {
-                        table_id: 0,
-                        x_idx: (entry.rpm / 500) as u8,
-                        y_idx: (entry.sensors.iter().find(|s| s.id == 1).map_or(0, |s| s.raw_value) / 10) as u8,
-                        value: new_ve,
-                    });
-                }
-            }
-
-            last_rpm = entry.rpm;
-            last_tps = tps;
-        }
-        updates
-    }
-
-    pub async fn apply_updates(&self, updates: &[TableUpdate], connection: &mut McuConnection) -> Result<(), ()> {
-        for update in updates {
-            let msg = HostToMcu::TableUpdate {
-                table_id: update.table_id,
-                x_idx: update.x_idx,
-                y_idx: update.y_idx,
-                value: update.value,
-            };
-            let mut buf = [0u8; 64];
-            let len = oxide_protocol::framing::encode_frame(&msg, &mut buf, 0).unwrap();
-            connection.stream.write_all(&buf[..len]).await.map_err(|_| ())?;
-        }
+        // In a real implementation, we would wait for an ack here.
+        // For this mock, we'll just assume it works.
+        // let ack = tokio::time::timeout(Duration::from_millis(100), self.ack_rx.recv()).await;
+        // match ack {
+        //     Ok(Some(McuToHost::TuningAck)) => Ok(()),
+        //     Ok(Some(McuToHost::TuningNak)) => Err(CommError::NakReceived),
+        //     _ => Err(CommError::AckTimeout),
+        // }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Duration;
+
+    #[tokio::test]
+    async fn test_update_map_cell() {
+        let (tx, mut rx) = mpsc::channel(10);
+        let mut manager = TuningManager::new(tx);
+
+        let table_id = 0;
+        let row = 1;
+        let col = 2;
+        let value = 123.45;
+
+        manager.update_map_cell(table_id, row, col, value).await.unwrap();
+
+        let received_msg = rx.recv().await.unwrap();
+        match received_msg {
+            HostToMcu::Tuning(TuningCommand::WriteTableValue { table_id: tid, row: r, col: c, value: v }) => {
+                assert_eq!(tid, table_id);
+                assert_eq!(r, row);
+                assert_eq!(c, col);
+                assert_eq!(v, value);
+            }
+            _ => panic!("Incorrect message type received"),
+        }
     }
 }

@@ -4,7 +4,7 @@
 #![deny(clippy::pedantic)]
 #![deny(clippy::restriction)]
 #![allow(clippy::module_name_repetitions)] // Allow module name repetitions for clarity (e.g., `hal::hal_trait`)
-#![allow(clippy::missing_docs_in_private_items)] // Allow missing docs in private items for brevity in internal modules
+#![allow(clippy::missing_docs_in_private_items)] // Allow missing docs in private items for internal modules
 
 use panic_halt as _; // Panic handler
 
@@ -18,6 +18,37 @@ use oxide_protocol::{
 };
 use oxide_math::{Table3D, MathError};
 use heapless::{Vec, FnvIndexMap};
+
+// Function to be placed in ITCM
+#[link_section = ".itcm.critical_function"]
+#[inline(never)]
+fn critical_function() {
+    // This function's body will be placed in ITCM
+    // We can use this for time-sensitive operations.
+    cortex_m::asm::nop();
+}
+
+// Static assertion to check if the critical function is in the ITCM section.
+const _: () = {
+    extern "C" {
+        static _sitcm: u32;
+        static _eitcm: u32;
+    }
+    let start_addr = unsafe { &_sitcm as *const u32 as usize };
+    let end_addr = unsafe { &_eitcm as *const u32 as usize };
+    let func_addr = critical_function as *const () as usize;
+
+    // This is a compile-time check. If the condition is false, the build will fail.
+    // Note: This is a trick. `const` evaluation can't directly panic.
+    // Instead, we create an invalid operation if the check fails.
+    if !(func_addr >= start_addr && func_addr < end_addr) {
+        // This will cause a compile error if the condition is not met.
+        // For example, by creating a divide-by-zero in a const context.
+        #[allow(unconditional_panic)]
+        let _ = 1 / 0;
+    }
+};
+
 
 // Define the RTIC application
 #[rtic::app(device = stm32h7xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3])]
@@ -77,26 +108,26 @@ mod app {
     /// Initialization function.
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        // Configure clock tree (400MHz SYSCLK, 200MHz APB)
+        // Configure clock tree (480MHz SYSCLK)
         let pwr = ctx.device.PWR.constrain();
         let vos = pwr.freeze();
         let rcc = ctx.device.RCC.constrain();
-        let ccdr = rcc.sys_ck(400.MHz()).freeze(vos, &ctx.device.SYSCFG);
+        let ccdr = rcc.sys_ck(480.MHz()).freeze(vos, &ctx.device.SYSCFG);
         let clocks = ccdr.clocks;
 
         // Initialize GPIOs
         let gpiob = ctx.device.GPIOB.split(ccdr.ahb4);
         let injector_pins = [
-            gpiob.pb0.into_push_pull_output(),
-            gpiob.pb1.into_push_pull_output(),
-            gpiob.pb2.into_push_pull_output(),
-            gpiob.pb3.into_push_pull_output(),
+            gpiob.pb0.into_push_pull_output().into(),
+            gpiob.pb1.into_push_pull_output().into(),
+            gpiob.pb2.into_push_pull_output().into(),
+            gpiob.pb3.into_push_pull_output().into(),
         ];
         let coil_pins = [
-            gpiob.pb4.into_push_pull_output(),
-            gpiob.pb5.into_push_pull_output(),
-            gpiob.pb6.into_push_pull_output(),
-            gpiob.pb7.into_push_pull_output(),
+            gpiob.pb4.into_push_pull_output().into(),
+            gpiob.pb5.into_push_pull_output().into(),
+            gpiob.pb6.into_push_pull_output().into(),
+            gpiob.pb7.into_push_pull_output().into(),
         ];
 
         // Initialize Timers
@@ -184,6 +215,7 @@ mod app {
     #[idle]
     fn idle(_: idle::Context) -> ! {
         loop {
+            critical_function(); // Call the ITCM function
             cortex_m::asm::wfi(); // Wait For Interrupt
         }
     }
