@@ -13,6 +13,10 @@ mod trigger_decoder;
 mod transport;
 mod scheduler;
 mod io;
+mod hal_impl;
+
+// The `#[link_section = ".itcm.scheduler"]` and `#[link_section = ".itcm.trigger_decoder"]`
+// attributes should be applied to the actual functions in the respective modules.
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {

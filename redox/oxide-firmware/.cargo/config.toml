@@ -1,0 +1,11 @@
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=--gc-sections",
+  "-C", "lto=fat",
+  "-C", "codegen-units=1",
+  "-C", "opt-level=s",
+]
+
+[build]
+target = "thumbv7em-none-eabihf"

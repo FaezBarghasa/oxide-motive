@@ -10,12 +10,13 @@ postcard = "1.0"
 heapless = "0.8"
 oxide-protocol = { path = "../oxide-protocol" }
 oxide-math = { path = "../oxide-math" }
-slint = "1.5.1"
+slint = { version = "1.5", default-features = false, features = ["std", "backend-linuxkms", "renderer-skia-opengl"] }
 tokio-tungstenite = "0.21.0"
 rumqttc = "0.24.0"
 atcommands = "0.7.0"
 ed25519-dalek = "2.1.1"
 sequential-storage = { version = "0.3.1", features = ["defmt"] }
+ctrlc = "3.4.4"
 
 [build-dependencies]
 slint-build = "1.5.1"

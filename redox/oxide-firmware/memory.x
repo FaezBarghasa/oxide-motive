@@ -1,0 +1,27 @@
+/*
+Linker script for the WeAct STM32H750VBT6 microcontroller.
+- 128KB of internal Flash
+- 1MB of SRAM
+*/
+
+MEMORY
+{
+  FLASH (rx) : ORIGIN = 0x08008000, LENGTH = 96K
+  ITCM (rwx) : ORIGIN = 0x00000000, LENGTH = 64K
+  DTCM (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
+  AXI_SRAM (rwx) : ORIGIN = 0x24000000, LENGTH = 512K
+  SRAM4 (rwx) : ORIGIN = 0x38000000, LENGTH = 64K
+}
+
+_stack_start = ORIGIN(DTCM) + LENGTH(DTCM);
+
+SECTIONS
+{
+  .itcm :
+  {
+    __itcm_start = .;
+    *(.itcm.*)
+    . = ALIGN(4);
+    __itcm_end = .;
+  } > ITCM
+}

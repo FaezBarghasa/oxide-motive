@@ -9,6 +9,8 @@ use embedded_hal_async::{
 use embedded_io_async::{Read, Write};
 use futures::future::Future;
 
+pub mod flash;
+
 pub trait Timer {
     fn now(&self) -> u64;
     fn sleep(&self, duration_us: u64) -> impl Future<Output = ()>;

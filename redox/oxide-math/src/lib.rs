@@ -1,82 +1,84 @@
 #![no_std]
 
-use heapless::Vec;
-
-pub struct Table3D<const X_SIZE: usize, const Y_SIZE: usize> {
-    x_axis: [f32; X_SIZE],
-    y_axis: [f32; Y_SIZE],
-    data: [[f32; Y_SIZE]; X_SIZE],
+pub struct LookupTable3D<const X_SIZE: usize, const Y_SIZE: usize> {
+    pub x_axis: [f32; X_SIZE],
+    pub y_axis: [f32; Y_SIZE],
+    pub data: [[f32; Y_SIZE]; X_SIZE],
 }
 
-impl<const X_SIZE: usize, const Y_SIZE: usize> Table3D<X_SIZE, Y_SIZE> {
-    pub fn new(x_axis: [f32; X_SIZE], y_axis: [f32; Y_SIZE], data: [[f32; Y_SIZE]; X_SIZE]) -> Self {
-        Self {
-            x_axis,
-            y_axis,
-            data,
-        }
-    }
-
+impl<const X_SIZE: usize, const Y_SIZE: usize> LookupTable3D<X_SIZE, Y_SIZE> {
+    #[inline(always)]
     pub fn interpolate(&self, x: f32, y: f32) -> f32 {
-        let x_idx = self.find_idx(&self.x_axis, x);
-        let y_idx = self.find_idx(&self.y_axis, y);
+        let x_idx = self.x_axis.binary_search_by(|probe| probe.partial_cmp(&x).unwrap());
+        let y_idx = self.y_axis.binary_search_by(|probe| probe.partial_cmp(&y).unwrap());
 
-        let x1 = self.x_axis[x_idx];
-        let x2 = self.x_axis[x_idx + 1];
-        let y1 = self.y_axis[y_idx];
-        let y2 = self.y_axis[y_idx + 1];
+        let (x1_idx, x2_idx, t) = match x_idx {
+            Ok(idx) => (idx, idx, 0.0),
+            Err(idx) => {
+                if idx == 0 {
+                    (0, 0, 0.0)
+                } else if idx >= X_SIZE {
+                    (X_SIZE - 1, X_SIZE - 1, 0.0)
+                } else {
+                    let x1 = self.x_axis[idx - 1];
+                    let x2 = self.x_axis[idx];
+                    (idx - 1, idx, (x - x1) / (x2 - x1))
+                }
+            }
+        };
 
-        let q11 = self.data[x_idx][y_idx];
-        let q12 = self.data[x_idx][y_idx + 1];
-        let q21 = self.data[x_idx + 1][y_idx];
-        let q22 = self.data[x_idx + 1][y_idx + 1];
+        let (y1_idx, y2_idx, u) = match y_idx {
+            Ok(idx) => (idx, idx, 0.0),
+            Err(idx) => {
+                if idx == 0 {
+                    (0, 0, 0.0)
+                } else if idx >= Y_SIZE {
+                    (Y_SIZE - 1, Y_SIZE - 1, 0.0)
+                } else {
+                    let y1 = self.y_axis[idx - 1];
+                    let y2 = self.y_axis[idx];
+                    (idx - 1, idx, (y - y1) / (y2 - y1))
+                }
+            }
+        };
 
-        let r1 = ((x2 - x) / (x2 - x1)) * q11 + ((x - x1) / (x2 - x1)) * q21;
-        let r2 = ((x2 - x) / (x2 - x1)) * q12 + ((x - x1) / (x2 - x1)) * q22;
+        let z00 = self.data[x1_idx][y1_idx];
+        let z10 = self.data[x2_idx][y1_idx];
+        let z01 = self.data[x1_idx][y2_idx];
+        let z11 = self.data[x2_idx][y2_idx];
 
-        ((y2 - y) / (y2 - y1)) * r1 + ((y - y1) / (y2 - y1)) * r2
-    }
+        let z0 = z00 * (1.0 - t) + z10 * t;
+        let z1 = z01 * (1.0 - t) + z11 * t;
 
-    fn find_idx(&self, axis: &[f32], value: f32) -> usize {
-        axis.iter()
-            .position(|&v| v >= value)
-            .unwrap_or(axis.len() - 2)
-            .saturating_sub(1)
+        z0 * (1.0 - u) + z1 * u
     }
 }
 
-pub struct PidController {
-    pub kp: f32,
-    pub ki: f32,
-    pub kd: f32,
-    pub output_min: f32,
-    pub output_max: f32,
-    integral: f32,
-    prev_error: f32,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl PidController {
-    pub fn new(kp: f32, ki: f32, kd: f32, output_min: f32, output_max: f32) -> Self {
-        Self {
-            kp,
-            ki,
-            kd,
-            output_min,
-            output_max,
-            integral: 0.0,
-            prev_error: 0.0,
-        }
-    }
+    #[test]
+    fn test_interpolation() {
+        let table = LookupTable3D {
+            x_axis: [1000.0, 2000.0, 3000.0, 4000.0],
+            y_axis: [20.0, 40.0, 60.0, 80.0],
+            data: [
+                [10.0, 20.0, 30.0, 40.0],
+                [15.0, 25.0, 35.0, 45.0],
+                [20.0, 30.0, 40.0, 50.0],
+                [25.0, 35.0, 45.0, 55.0],
+            ],
+        };
 
-    pub fn update(&mut self, setpoint: f32, measurement: f32, dt: f32) -> f32 {
-        let error = setpoint - measurement;
-        self.integral += error * dt;
-        self.integral = self.integral.clamp(self.output_min, self.output_max); // Anti-windup
+        // Test at grid intersection
+        assert_eq!(table.interpolate(2000.0, 40.0), 25.0);
 
-        let derivative = (error - self.prev_error) / dt;
-        self.prev_error = error;
+        // Test at midpoint
+        assert_eq!(table.interpolate(1500.0, 30.0), 17.5);
 
-        let output = self.kp * error + self.ki * self.integral + self.kd * derivative;
-        output.clamp(self.output_min, self.output_max)
+        // Test clamping
+        assert_eq!(table.interpolate(500.0, 10.0), 10.0);
+        assert_eq!(table.interpolate(5000.0, 90.0), 55.0);
     }
 }
