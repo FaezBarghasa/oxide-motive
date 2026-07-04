@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod estimation;
+
 #[derive(Debug)]
 pub enum MathError {
     OutOfBounds,
@@ -7,22 +9,32 @@ pub enum MathError {
 
 /// A 3D lookup table for engine calibration maps (e.g., VE, spark).
 /// X_SIZE and Y_SIZE are the dimensions of the table axes.
-pub struct LookupTable3D<const X_SIZE: usize, const Y_SIZE: usize> {
-    pub x_axis: [f32; X_SIZE],
-    pub y_axis: [f32; Y_SIZE],
-    pub data: [[f32; Y_SIZE]; X_SIZE],
+pub struct Table3D<T, const X_SIZE: usize, const Y_SIZE: usize> {
+    pub x_axis: [T; X_SIZE],
+    pub y_axis: [T; Y_SIZE],
+    pub data: [[T; Y_SIZE]; X_SIZE],
 }
 
-impl<const X_SIZE: usize, const Y_SIZE: usize> LookupTable3D<X_SIZE, Y_SIZE> {
+impl<T: Copy + Default, const X_SIZE: usize, const Y_SIZE: usize> Table3D<T, X_SIZE, Y_SIZE> {
     /// Creates a new, zeroed lookup table.
     pub const fn new() -> Self {
         Self {
-            x_axis: [0.0; X_SIZE],
-            y_axis: [0.0; Y_SIZE],
-            data: [[0.0; Y_SIZE]; X_SIZE],
+            x_axis: [T::default(); X_SIZE],
+            y_axis: [T::default(); Y_SIZE],
+            data: [[T::default(); Y_SIZE]; X_SIZE],
         }
     }
 
+    pub const fn new_from_data(data: [[T; Y_SIZE]; X_SIZE]) -> Self {
+        Self {
+            x_axis: [T::default(); X_SIZE],
+            y_axis: [T::default(); Y_SIZE],
+            data,
+        }
+    }
+}
+
+impl<const X_SIZE: usize, const Y_SIZE: usize> Table3D<f32, X_SIZE, Y_SIZE> {
     /// Performs trilinear interpolation on the 3D table.
     ///
     /// # Arguments
@@ -85,11 +97,10 @@ impl<const X_SIZE: usize, const Y_SIZE: usize> LookupTable3D<X_SIZE, Y_SIZE> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
 
     #[test]
     fn test_interpolation_in_bounds() {
-        let table = LookupTable3D {
+        let table = Table3D {
             x_axis: [1000.0, 2000.0, 3000.0, 4000.0],
             y_axis: [50.0, 100.0, 150.0, 200.0],
             data: [
@@ -112,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_interpolation_out_of_bounds() {
-        let table = LookupTable3D {
+        let table = Table3D {
             x_axis: [1000.0, 2000.0, 3000.0, 4000.0],
             y_axis: [50.0, 100.0, 150.0, 200.0],
             data: [
@@ -131,29 +142,5 @@ mod tests {
         assert_eq!(table.interpolate(1500.0, 25.0), 12.5);
         // Clamp to upper y boundary
         assert_eq!(table.interpolate(2500.0, 250.0), 45.0);
-    }
-
-    #[test]
-    #[ignore] // This is a micro-benchmark and should not run with regular tests.
-    fn benchmark_interpolation() {
-        let table = LookupTable3D {
-            x_axis: [0.0; 16],
-            y_axis: [0.0; 16],
-            data: [[0.0; 16]; 16],
-        };
-
-        let start = Instant::now();
-        let iterations = 1_000_000;
-        for i in 0..iterations {
-            let x = (i % 16) as f32 * 100.0;
-            let y = (i / 16 % 16) as f32 * 10.0;
-            let _ = table.interpolate(x, y);
-        }
-        let duration = start.elapsed();
-        let time_per_op = duration.as_nanos() as f64 / iterations as f64;
-
-        println!("Interpolation benchmark: {} ns/op", time_per_op);
-        // Assert that the operation is faster than 2 microseconds (2000 nanoseconds)
-        assert!(time_per_op < 2000.0);
     }
 }

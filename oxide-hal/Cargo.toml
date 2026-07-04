@@ -4,30 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# No_std compatible traits for hardware abstraction
-# No dependencies here, as this crate defines traits that other HALs will implement.
-# It should be as minimal as possible.
-cortex-m = { version = "0.7.7", optional = true }
-cortex-m-rt = { version = "0.7.0", optional = true }
-heapless = "0.8.0" # For mock CAN bus and other potential uses
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
+embedded-io = "0.6.1"
+heapless = "0.8.0"
 
 [features]
 default = []
-stm32h743 = ["stm32h7xx-hal/stm32h743v", "cortex-m", "cortex-m-rt"]
-stm32g4 = ["stm32g4xx-hal", "cortex-m", "cortex-m-rt"]
-nxp_s32k = ["nxp-s32k1xx-hal", "cortex-m", "cortex-m-rt"]
-
-[dependencies.stm32h7xx-hal]
-version = "0.16"
-features = ["rt", "defmt"]
-optional = true
-
-[dependencies.stm32g4xx-hal]
-version = "0.10.0" # Or the latest compatible version
-optional = true
-features = ["rt", "exti"] # Example features, adjust as needed
-
-[dependencies.nxp-s32k1xx-hal]
-version = "0.1.0" # Placeholder version, replace with actual
-optional = true
-features = ["s32k144"] # Example feature, adjust as needed
