@@ -1,96 +1,77 @@
-// This file will contain the implementation of the `EngineTimer` and `PeakAndHoldPwm`
-// traits for various STM32 families, using conditional compilation.
 
-use oxide_hal::engine_timer::{EngineTimer, TimerError};
-use oxide_hal::peak_and_hold_pwm::PeakAndHoldPwm;
+#![allow(dead_code)]
+use oxide_hal::{EngineTimer, PeakAndHoldPwm};
 
-// --- STM32H7 Implementation ---
 #[cfg(feature = "stm32h7")]
-pub mod stm32h7_impl {
-    use super::*;
-    use stm32h7xx_hal as hal;
-    use hal::pac;
-    use hal::prelude::*;
-    use hal::timer::{Timer, Advanced, Channel};
+use stm32h7xx_hal::{pac, prelude::*, timer::{Timer, Event}};
 
-    // Example implementation for TIM1 on STM32H7
-    pub struct Stm32H7EngineTimer {
-        timer: Timer<pac::TIM1, Advanced>,
-    }
+#[cfg(feature = "stm32h7")]
+pub struct Stm32EngineTimer {
+    timer: Timer<pac::TIM2>,
+}
 
-    impl Stm32H7EngineTimer {
-        pub fn new(tim1: pac::TIM1, prec: hal::rcc::rec::Tim1, clocks: &hal::rcc::CoreClocks) -> Self {
-            let mut timer = tim1.timer(prec, clocks);
-            timer.pause();
-            Self { timer }
-        }
-    }
-
-    impl EngineTimer for Stm32H7EngineTimer {
-        type Error = TimerError;
-
-        fn counter_us(&self) -> u32 {
-            self.timer.counter_us()
-        }
-
-        fn set_compare_us(&mut self, channel: u8, ticks_us: u32) -> Result<(), Self::Error> {
-            let ch = match channel {
-                1 => Channel::C1,
-                2 => Channel::C2,
-                3 => Channel::C3,
-                4 => Channel::C4,
-                _ => return Err(TimerError::InvalidChannel),
-            };
-            self.timer.set_compare(ch, ticks_us);
-            Ok(())
-        }
-
-        fn enable_compare_interrupt(&mut self, channel: u8) {
-            let ch = match channel {
-                1 => Channel::C1,
-                2 => Channel::C2,
-                3 => Channel::C3,
-                4 => Channel::C4,
-                _ => return,
-            };
-            self.timer.enable_interrupt(ch);
-        }
-
-        fn clear_interrupt_flag(&mut self, channel: u8) {
-            let ch = match channel {
-                1 => Channel::C1,
-                2 => Channel::C2,
-                3 => Channel::C3,
-                4 => Channel::C4,
-                _ => return,
-            };
-            self.timer.clear_interrupt(ch);
-        }
-
-        fn ticks_per_us(&self) -> u32 {
-            // This depends on the clock configuration.
-            // Assuming the timer is clocked from PCLK1 and PCLK1 is 200MHz
-            // The stm32h7xx-hal timer is configured to have a 1MHz frequency.
-            1
-        }
+#[cfg(feature = "stm32h7")]
+impl Stm32EngineTimer {
+    pub fn new(tim: pac::TIM2, rcc: &mut stm32h7xx_hal::rcc::CoreClocks) -> Self {
+        let mut timer = tim.timer(1.MHz(), rcc);
+        timer.listen(Event::Update);
+        Stm32EngineTimer { timer }
     }
 }
 
+#[cfg(feature = "stm32h7")]
+impl EngineTimer for Stm32EngineTimer {
+    type Error = stm32h7xx_hal::timer::Error;
 
-// --- STM32F4 Implementation ---
-#[cfg(feature = "stm32f4")]
-pub mod stm32f4_impl {
-    // Implementation for STM32F4 will go here...
+    fn counter_us(&mut self) -> Result<u32, Self::Error> {
+        Ok(self.timer.counter().to_micros())
+    }
+
+    fn set_compare_us(&mut self, channel: u8, ticks_us: u32) -> Result<(), Self::Error> {
+        let ch = stm32h7xx_hal::timer::Channel::from(channel);
+        self.timer.set_compare(ch, stm32h7xx_hal::time::duration::Microseconds(ticks_us));
+        Ok(())
+    }
+
+    fn enable_compare_interrupt(&mut self, channel: u8) {
+        let ch = stm32h7xx_hal::timer::Channel::from(channel);
+        self.timer.enable_interrupt(stm32h7xx_hal::timer::Event::Compare(ch));
+    }
+
+    fn clear_interrupt(&mut self, channel: u8) {
+        let ch = stm32h7xx_hal::timer::Channel::from(channel);
+        self.timer.clear_interrupt(stm32h7xx_hal::timer::Event::Compare(ch));
+    }
+
+    fn ticks_per_us(&self) -> u32 {
+        1
+    }
 }
 
-// --- STM32G4 Implementation ---
-#[cfg(feature = "stm32g4")]
-pub mod stm32g4_impl {
-    // Implementation for STM32G4 will go here...
+// Mock implementation for other STM32 families for compilation
+#[cfg(not(feature = "stm32h7"))]
+pub struct Stm32EngineTimer;
+
+#[cfg(not(feature = "stm32h7"))]
+impl EngineTimer for Stm32EngineTimer {
+    type Error = core::convert::Infallible;
+    fn counter_us(&mut self) -> Result<u32, Self::Error> { Ok(0) }
+    fn set_compare_us(&mut self, _channel: u8, _ticks_us: u32) -> Result<(), Self::Error> { Ok(()) }
+    fn enable_compare_interrupt(&mut self, _channel: u8) {}
+    fn clear_interrupt(&mut self, _channel: u8) {}
+    fn ticks_per_us(&self) -> u32 { 1 }
 }
 
-// --- STM32U5 Implementation ---
-#[cfg(feature = "stm32u5")]
-pub mod stm32u5_impl {
-    // Implementation for STM32U5 will go here...
+pub struct Stm32PeakAndHoldPwm;
+impl embedded_hal::pwm::ErrorType for Stm32PeakAndHoldPwm {
+    type Error = core::convert::Infallible;
+}
+impl embedded_hal::pwm::SetDutyCycle for Stm32PeakAndHoldPwm {
+    fn max_duty_cycle(&self) -> u16 { 255 }
+    fn set_duty_cycle(&mut self, _duty: u16) -> Result<(), Self::Error> { Ok(()) }
+}
+impl PeakAndHoldPwm for Stm32PeakAndHoldPwm {
+    fn configure_peak_hold(&mut self, _peak_time_us: u16, _hold_duty_percent: u8) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }

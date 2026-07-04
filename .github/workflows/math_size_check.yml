@@ -1,0 +1,23 @@
+
+name: Oxide Math Size Check
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  size-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release -p oxide-math
+    - name: Check size
+      run: |
+        size=$(cargo size --release -- -p oxide-math --format=json | grep '"text":' | awk '{print $2}' | sed 's/,//')
+        if [ "$size" -gt 50000 ]; then
+          echo "oxide-math binary size ($size) exceeds 50KB"
+          exit 1
+        fi

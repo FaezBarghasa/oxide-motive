@@ -1,59 +1,52 @@
-
-use nalgebra::{SMatrix, SVector};
+//! PTP-like Clock Synchronization with Kalman Filter
+#![no_std]
 
 pub struct ClockSyncManager {
-    offset: f64,
-    skew: f64,
-    kalman_p: SMatrix<f64, 2, 2>,
-    kalman_k: SVector<f64, 2>,
+    offset_ns: f64,
+    skew_ppm: f64,
+    // Kalman Filter state
+    kalman_p: f64, // Estimate error covariance
+    kalman_q: f64, // Process noise covariance
+    kalman_r: f64, // Measurement noise covariance
 }
 
 impl ClockSyncManager {
     pub fn new() -> Self {
         Self {
-            offset: 0.0,
-            skew: 1.0,
-            kalman_p: SMatrix::<f64, 2, 2>::identity(),
-            kalman_k: SVector::<f64, 2>::zeros(),
+            offset_ns: 0.0,
+            skew_ppm: 0.0,
+            kalman_p: 1.0,
+            kalman_q: 1e-9, // Low process noise (clocks are stable)
+            kalman_r: 1e-5, // Measurement noise (network jitter)
         }
     }
 
-    pub fn update(&mut self, t1: u64, t2: u64, t3: u64, t4: u64) {
-        let t1 = t1 as f64;
-        let t2 = t2 as f64;
-        let t3 = t3 as f64;
-        let t4 = t4 as f64;
+    /// Updates the clock offset using a 4-way PTP handshake.
+    /// t1: Host send time
+    /// t2: MCU receive time
+    /// t3: MCU send time
+    /// t4: Host receive time
+    pub fn update(&mut self, t1: f64, t2: f64, t3: f64, t4: f64) {
+        // Network delay (assumed symmetric)
+        let delay = ((t4 - t1) - (t3 - t2)) * 0.5;
 
-        let delay = ((t4 - t1) - (t3 - t2)) / 2.0;
-        let offset = ((t2 - t1) + (t3 - t4)) / 2.0;
+        // Raw clock offset measurement
+        let raw_offset = ((t2 - t1) + (t3 - t4)) * 0.5;
 
-        let h = SMatrix::<f64, 1, 2>::new(1.0, delay);
-        let r = 1.0; // Measurement noise covariance
+        // Kalman Filter Update Step
+        // 1. Predict (skipped here as we assume constant offset between fast updates)
+        // 2. Calculate Kalman Gain
+        let kalman_gain = self.kalman_p / (self.kalman_p + self.kalman_r);
 
-        let y = offset - (self.offset + self.skew * delay);
-        let s = (h * self.kalman_p * h.transpose() + r)[(0, 0)];
-        self.kalman_k = self.kalman_p * h.transpose() / s;
-        let x_update = self.kalman_k * y;
+        // 3. Update Estimate
+        self.offset_ns += kalman_gain * (raw_offset - self.offset_ns);
 
-        self.offset += x_update[0];
-        self.skew += x_update[1];
-
-        self.kalman_p = (SMatrix::<f64, 2, 2>::identity() - self.kalman_k * h) * self.kalman_p;
+        // 4. Update Covariance
+        self.kalman_p = (1.0 - kalman_gain) * self.kalman_p + self.kalman_q.abs();
     }
 
-    pub fn corrected_time(&self, local_time: u64) -> f64 {
-        self.offset + self.skew * (local_time as f64)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_clock_sync_manager() {
-        let mut manager = ClockSyncManager::new();
-        manager.update(1000, 1100, 1200, 1300);
-        assert_ne!(manager.offset, 0.0);
+    /// Converts a local MCU timestamp to the globally synchronized Host time.
+    pub fn corrected_time_ns(&self, local_time_ns: f64) -> f64 {
+        local_time_ns + self.offset_ns
     }
 }

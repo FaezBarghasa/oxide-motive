@@ -13,6 +13,13 @@ cobs = { version = "0.2", default-features = false } # For COBS framing
 # However, for `heapless::Vec`, it's typically used on the stack or in static memory.
 # The `serde` feature for heapless is needed for serialization.
 
+[dev-dependencies]
+divan = "0.1.13"
+
 [features]
 std = ["serde/std", "postcard/std"] # Enable std features for testing/host
 default = [] # No std by default for no_std compatibility
+
+[[bench]]
+name = "clock_sync_benchmark"
+harness = false

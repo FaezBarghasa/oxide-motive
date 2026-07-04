@@ -1,0 +1,27 @@
+
+name: Host ARM CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install cross
+      run: cargo install cross --git https://github.com/cross-rs/cross
+    - name: Build
+      run: cross build --release --target ${{ matrix.target }} -p oxide-host
+    - name: Test
+      run: cross test --target ${{ matrix.target }} -p oxide-host
+    - name: Clippy
+      run: cross clippy --target ${{ matrix.target }} -p oxide-host -- -D warnings

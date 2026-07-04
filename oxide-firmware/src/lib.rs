@@ -4,4 +4,4 @@
 pub mod transport;
 pub mod scheduler;
 pub mod hal_impl;
-pub mod memory_maps;
+pub mod rtic_app;

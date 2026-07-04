@@ -1,3 +1,4 @@
+
 use anyhow::Result;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -5,12 +6,18 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::fs::File;
 
 mod ui;
+mod platform;
+
+use platform::display::{DisplayProbe, RendererTier};
 
 // Re-exporting the protocol types for convenience
 pub use oxide_protocol::{TelemetryFrame, McuToHost, HostToMcu, framing};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let renderer_tier = DisplayProbe::probe();
+    DisplayProbe::set_renderer_env(renderer_tier);
+
     let (ui_tx, ui_rx) = mpsc::channel(100);
     let (log_tx, log_rx) = mpsc::channel(100);
     let (mcu_tx, mcu_rx) = mpsc::channel(100);
