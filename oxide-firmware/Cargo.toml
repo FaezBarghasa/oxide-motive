@@ -17,24 +17,39 @@ rtic = { workspace = true }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 cortex-m-rtic = { workspace = true }
-# For STM32H7xx-HAL
-stm32h7xx-hal = { version = "0.16", features = ["stm32h743v", "rt"] }
+
 # For panic handling
 panic-halt = "0.2"
+
+# Vendor HALs - as optional dependencies
+stm32f4xx-hal = { version = "0.20", optional = true, features = ["rt"] }
+stm32g4xx-hal = { version = "0.0.8", optional = true, features = ["rt"] }
+stm32h7xx-hal = { version = "0.16", optional = true, features = ["stm32h750v", "rt"] }
+stm32u5xx-hal = { version = "0.3", optional = true, features = ["rt"] }
+lpc55-hal = { version = "0.10.0", optional = true }
+nrf9160-hal = { version = "0.18.0", optional = true }
+renesas-ra = { version = "0.2.0", optional = true }
+
 
 [build-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 quote = "1.0"
+std = "1.0"
 
 [features]
-# Conditional compilation for different MCU families
+# MCU families
+stm32f4 = ["stm32f4xx-hal"]
+stm32g4 = ["stm32g4xx-hal"]
 stm32h7 = ["stm32h7xx-hal"]
-# nxp_s32k = ["s32k-hal"] # Placeholder for NXP S32K HAL
-# renesas_ra = ["renesas-ra"] # Placeholder for Renesas RA HAL
+stm32u5 = ["stm32u5xx-hal"]
+lpc55 = ["lpc55-hal"]
+nrf91 = ["nrf9160-hal"]
+renesas_ra8 = ["renesas-ra"]
+
 
 # Default feature for building
-default = ["stm32h7"]
+default = []
 
 [profile.release]
 codegen-units = 1 # Better optimizations
