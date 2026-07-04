@@ -1,11 +1,8 @@
 [build]
-target = "thumbv7em-none-eabihf" # Default target for convenience
+target = "thumbv7em-none-eabihf"
 
 [target.thumbv7em-none-eabihf]
-runner = "probe-run --chip STM32H743VITx" # Example runner for flashing/debugging
+runner = "probe-run --chip STM32H750VBTx"
 
-[target.x86_64-unknown-redox]
-# No specific runner needed for Redox OS, it's a standard build target
-
-[target.x86_64-unknown-linux-gnu]
+[target.aarch64-unknown-linux-gnu]
 # No specific runner needed for Linux, it's a standard build target

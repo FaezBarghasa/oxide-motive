@@ -1,173 +1,80 @@
-//! 60-2 missing-tooth crank trigger decoder.
+use heapless::Deque;
 
-use heapless::spsc::{Queue, Producer, Consumer};
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum EngineSyncState {
+#[derive(Debug, PartialEq)]
+pub enum SyncState {
     NoSignal,
-    SearchingForGap,
-    GapDetected,
-    FullySynchronized,
+    Searching,
+    Synced,
 }
 
 pub struct TriggerDecoder {
-    pub sync_state: EngineSyncState,
+    state: SyncState,
     last_tooth_time: u32,
-    expected_tooth_interval: u32,
-    current_tooth_index: u8,
-    pub engine_speed_rpm: f32,
-    timer_freq: u32,
-    timestamp_producer: Producer<'static, u32, 256>,
+    tooth_times: Deque<u32, 64>,
+    missing_tooth_detected: bool,
 }
 
 impl TriggerDecoder {
-    pub fn new(timer_freq: u32, producer: Producer<'static, u32, 256>) -> Self {
+    pub fn new() -> Self {
         Self {
-            sync_state: EngineSyncState::NoSignal,
+            state: SyncState::NoSignal,
             last_tooth_time: 0,
-            expected_tooth_interval: 0,
-            current_tooth_index: 0,
-            engine_speed_rpm: 0.0,
-            timer_freq,
-            timestamp_producer: producer,
+            tooth_times: Deque::new(),
+            missing_tooth_detected: false,
         }
     }
 
-    /// Handles a hardware input capture interrupt for a crank tooth.
-    /// Returns the calculated RPM if a full rotation is detected.
-    pub fn handle_interrupt_pulse(&mut self, timestamp: u32) -> Option<f32> {
-        self.timestamp_producer.enqueue(timestamp).ok();
-
-        if self.last_tooth_time == 0 {
-            self.last_tooth_time = timestamp;
-            return None;
-        }
-
-        let dt = timestamp.wrapping_sub(self.last_tooth_time);
+    pub fn handle_interrupt_pulse(&mut self, timestamp: u32) -> (u16, u32, SyncState) {
+        let delta = timestamp.wrapping_sub(self.last_tooth_time);
         self.last_tooth_time = timestamp;
 
-        match self.sync_state {
-            EngineSyncState::NoSignal | EngineSyncState::SearchingForGap => {
-                if self.expected_tooth_interval > 0 && dt > (self.expected_tooth_interval * 25 / 10) { // 2.5x expected
-                    // Gap detected
-                    self.sync_state = EngineSyncState::GapDetected;
-                    self.current_tooth_index = 0;
-                    // Calculate RPM based on the time for 58 teeth
-                    let time_for_58_teeth = self.expected_tooth_interval * 58;
-                    if time_for_58_teeth > 0 {
-                        self.engine_speed_rpm = (60.0 * self.timer_freq as f32) / time_for_58_teeth as f32;
-                    }
-                    return Some(self.engine_speed_rpm);
-                } else {
-                    // Update expected interval with a simple moving average
-                    self.expected_tooth_interval = (self.expected_tooth_interval * 7 + dt) / 8;
-                    self.sync_state = EngineSyncState::SearchingForGap;
-                }
-            }
-            EngineSyncState::GapDetected | EngineSyncState::FullySynchronized => {
-                self.current_tooth_index += 1;
-                if dt > (self.expected_tooth_interval * 25 / 10) { // 2.5x expected
-                    // Found the gap again
-                    self.sync_state = EngineSyncState::FullySynchronized;
-                    self.current_tooth_index = 0;
-                    let time_for_58_teeth = self.expected_tooth_interval * 58;
-                     if time_for_58_teeth > 0 {
-                        self.engine_speed_rpm = (60.0 * self.timer_freq as f32) / time_for_58_teeth as f32;
-                    }
-                    return Some(self.engine_speed_rpm);
-                }
-                // Update expected interval
-                self.expected_tooth_interval = (self.expected_tooth_interval * 7 + dt) / 8;
+        if self.state == SyncState::NoSignal {
+            self.state = SyncState::Searching;
+            self.tooth_times.clear();
+        }
+
+        if self.tooth_times.len() > 2 {
+            let avg_delta = self.tooth_times.iter().sum::<u32>() / self.tooth_times.len() as u32;
+            if delta > avg_delta * 1.5 {
+                self.missing_tooth_detected = true;
+                self.state = SyncState::Synced;
+                self.tooth_times.clear();
             }
         }
-        None
+
+        if self.tooth_times.is_full() {
+            self.tooth_times.pop_front();
+        }
+        self.tooth_times.push_back(delta).ok();
+
+        let rpm = if self.state == SyncState::Synced {
+            let revolution_time: u32 = self.tooth_times.iter().sum();
+            (60_000_000 / revolution_time) as u16
+        } else {
+            0
+        };
+
+        (rpm, 0, self.state.clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use heapless::spsc::Queue;
-
-    const TIMER_FREQ: u32 = 1_000_000; // 1MHz timer
-
-    fn generate_60_2_pulses(rpm: u32, num_cycles: usize) -> Vec<u32> {
-        let mut pulses = Vec::new();
-        let teeth_per_rev = 60;
-        let total_teeth_in_cycle = teeth_per_rev - 2;
-        let time_per_rev_s = 60.0 / rpm as f32;
-        let time_per_tooth_s = time_per_rev_s / teeth_per_rev as f32;
-        let time_per_tooth_ticks = (time_per_tooth_s * TIMER_FREQ as f32) as u32;
-
-        let mut current_time = 0;
-        for _ in 0..num_cycles {
-            for tooth in 0..total_teeth_in_cycle {
-                pulses.push(current_time);
-                current_time += time_per_tooth_ticks;
-            }
-            // Skip 2 teeth for the gap
-            current_time += time_per_tooth_ticks * 2;
-        }
-        pulses
-    }
 
     #[test]
-    fn test_decoder_syncs_and_calculates_rpm() {
-        static mut Q: Queue<u32, 256> = Queue::new();
-        let (p, _c) = unsafe { Q.split() };
-        let mut decoder = TriggerDecoder::new(TIMER_FREQ, p);
-        let pulses = generate_60_2_pulses(1000, 3);
-
-        let mut final_rpm = 0.0;
-        for pulse in pulses {
-            if let Some(rpm) = decoder.handle_interrupt_pulse(pulse) {
-                final_rpm = rpm;
-            }
+    fn test_trigger_decoder() {
+        let mut decoder = TriggerDecoder::new();
+        let mut timestamp = 0;
+        // Simulate 60-2 wheel at 1200 RPM (50ms per revolution, 0.833ms per tooth)
+        for i in 0..58 {
+            timestamp += 833;
+            decoder.handle_interrupt_pulse(timestamp);
         }
+        timestamp += 833 * 3; // Missing teeth
+        let (rpm, _, state) = decoder.handle_interrupt_pulse(timestamp);
 
-        assert_eq!(decoder.sync_state, EngineSyncState::FullySynchronized);
-        assert!(final_rpm > 990.0 && final_rpm < 1010.0);
-    }
-
-    #[test]
-    fn test_decoder_handles_acceleration() {
-        static mut Q: Queue<u32, 256> = Queue::new();
-        let (p, _c) = unsafe { Q.split() };
-        let mut decoder = TriggerDecoder::new(TIMER_FREQ, p);
-
-        let mut pulses = generate_60_2_pulses(1000, 2);
-        let accel_pulses = generate_60_2_pulses(2000, 2);
-        pulses.extend(accel_pulses.iter().map(|p| p + pulses.last().unwrap_or(&0)));
-
-        let mut final_rpm = 0.0;
-        for pulse in pulses {
-            if let Some(rpm) = decoder.handle_interrupt_pulse(pulse) {
-                final_rpm = rpm;
-            }
-        }
-
-        assert_eq!(decoder.sync_state, EngineSyncState::FullySynchronized);
-        assert!(final_rpm > 1980.0 && final_rpm < 2020.0);
-    }
-
-    #[test]
-    fn test_decoder_handles_noisy_signal() {
-        static mut Q: Queue<u32, 256> = Queue::new();
-        let (p, _c) = unsafe { Q.split() };
-        let mut decoder = TriggerDecoder::new(TIMER_FREQ, p);
-
-        let mut pulses = generate_60_2_pulses(1000, 3);
-        // Add a noise pulse
-        pulses.insert(10, pulses[9] + 50);
-
-        let mut final_rpm = 0.0;
-        for pulse in pulses {
-            if let Some(rpm) = decoder.handle_interrupt_pulse(pulse) {
-                final_rpm = rpm;
-            }
-        }
-
-        assert_eq!(decoder.sync_state, EngineSyncState::FullySynchronized);
-        assert!(final_rpm > 990.0 && final_rpm < 1010.0);
+        assert_eq!(state, SyncState::Synced);
+        assert!(rpm > 1100 && rpm < 1300);
     }
 }

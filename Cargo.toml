@@ -5,6 +5,7 @@ members = [
     "oxide-host",
     "oxide-hal",
     "oxide-math",
+    "oxide-control",
     "oxide-mp1",
     "oxide-esp32-host",
     "oxide-core",
@@ -24,6 +25,7 @@ postcard = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 rtic = "2.1"
 cortex-m-rtic = "2.1"
+nalgebra = { version = "0.33", default-features = false }
 embassy-executor = "0.5.0"
 embassy-sync = "0.5.0"
 embassy-time = "0.3.0"

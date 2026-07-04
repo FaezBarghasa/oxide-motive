@@ -1,16 +1,6 @@
-# Allow these lints for now, but consider addressing them in the future
-# For a new project, it's good to be strict initially and relax only when necessary.
-# This configuration is a starting point based on the prompt's requirements.
+# Enforce pedantic and restriction lints
+#![warn(clippy::pedantic, clippy::restriction)]
 
-# Allow `missing-errors-doc` as it's often verbose for simple error types
-# and can be added later as the API stabilizes.
-# missing-errors-doc = "allow"
-
-# Allow `module-name-repetitions` as it can lead to awkward naming
-# (e.g., `foo_module::foo_module_struct`).
-# module-name-repetitions = "allow"
-
-# The prompt specifically asks to allow only strictly necessary restrictions.
-# For now, we'll keep it empty, meaning all pedantic and restriction lints
-# will be active by default, as requested by the `-W clippy::pedantic -W clippy::restriction` flags.
-# If specific lints become problematic, they can be added here with `allow`.
+# Forbid unwrap() and expect() in firmware crates
+[*.firmware]
+disallowed-methods = ["unwrap", "expect"]

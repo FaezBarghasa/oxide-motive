@@ -1,227 +1,135 @@
-//! Secure storage manager for loading calibration tables from external flash.
-
-use crate::hal::ExternalFlash;
-use crc32fast::Hasher;
-
-const TABLE_HEADER_MAGIC: u32 = 0x4F584D54; // "OXMT"
-const CALIBRATION_BANK_A_ADDR: u32 = 0x0001_0000;
-const CALIBRATION_BANK_B_ADDR: u32 = 0x0002_0000;
+use crc::{Crc, CRC_32_ISO_HDLC};
+use oxide_hal::ExternalFlash;
+use postcard::from_bytes;
+use crate::app::Table3D;
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
 pub struct TableHeader {
-    pub magic: u32,
-    pub version: u16,
-    pub size: u16,
-    pub crc32: u32,
-    pub is_active: u8,
-    pub padding: [u8; 3],
+    magic: u32,
+    version: u32,
+    size: u32,
+    crc32: u32,
+    is_active: bool,
 }
 
-impl TableHeader {
-    pub fn is_valid(&self, payload: &[u8]) -> bool {
-        if self.magic != TABLE_HEADER_MAGIC {
-            return false;
-        }
-        let mut hasher = Hasher::new();
-        hasher.update(payload);
-        let calculated_crc = hasher.finalize();
-        self.crc32 == calculated_crc
-    }
+pub struct TableManager<'a, F: ExternalFlash> {
+    flash: &'a mut F,
 }
 
-#[derive(Debug)]
-pub enum StorageError {
-    FlashError,
-    InvalidBankA,
-    InvalidBankB,
-    BothBanksCorrupt,
-}
-
-pub struct TableManager<F: ExternalFlash> {
-    flash: F,
-}
-
-impl<F: ExternalFlash> TableManager<F> {
-    pub fn new(flash: F) -> Self {
+impl<'a, F: ExternalFlash> TableManager<'a, F> {
+    pub fn new(flash: &'a mut F) -> Self {
         Self { flash }
     }
 
-    pub fn load_active_tables(&mut self, dest: &mut [u8]) -> Result<(), StorageError> {
-        match self.load_bank(CALIBRATION_BANK_A_ADDR, dest) {
-            Ok(_) => Ok(()),
-            Err(StorageError::InvalidBankA) => {
-                // Bank A is corrupt, try Bank B
-                self.load_bank(CALIBRATION_BANK_B_ADDR, dest)
-                    .map_err(|_| StorageError::BothBanksCorrupt)
-            }
-            Err(e) => Err(e),
+    pub async fn load_active_tables(&mut self) -> (Table3D<f32, 16, 16>, Table3D<f32, 16, 16>) {
+        if let Ok(tables) = self.load_bank(0).await {
+            tables
+        } else if let Ok(tables) = self.load_bank(1).await {
+            tables
+        } else {
+            (
+                Table3D::new_from_data([[0.0; 16]; 16]),
+                Table3D::new_from_data([[0.0; 16]; 16]),
+            )
         }
     }
 
-    fn load_bank(&mut self, base_addr: u32, dest: &mut [u8]) -> Result<(), StorageError> {
+    async fn load_bank(&mut self, bank: u32) -> Result<(Table3D<f32, 16, 16>, Table3D<f32, 16, 16>), ()> {
         let mut header_buf = [0u8; core::mem::size_of::<TableHeader>()];
-        self.flash.read(base_addr, &mut header_buf).map_err(|_| StorageError::FlashError)?;
+        self.flash.read(bank * 0x100000, &mut header_buf).await?;
+        let header: TableHeader = from_bytes(&header_buf).map_err(|_| ())?;
 
-        let header: TableHeader = unsafe { core::ptr::read(header_buf.as_ptr() as *const _) };
-
-        if header.size as usize > dest.len() {
-            return Err(StorageError::InvalidBankA); // Or some other error
+        if header.magic != 0xDEADBEEF || !header.is_active {
+            return Err(());
         }
 
-        let payload_slice = &mut dest[..header.size as usize];
-        self.flash.read(base_addr + header_buf.len() as u32, payload_slice).map_err(|_| StorageError::FlashError)?;
+        let mut table_buf = [0u8; 1024];
+        self.flash.read(bank * 0x100000 + core::mem::size_of::<TableHeader>() as u32, &mut table_buf).await?;
 
-        if header.is_valid(payload_slice) {
-            Ok(())
-        } else {
-            Err(StorageError::InvalidBankA) // Use a generic error for invalid bank
+        let crc = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        if crc.checksum(&table_buf[..header.size as usize]) != header.crc32 {
+            return Err(());
         }
+
+        let tables: (Table3D<f32, 16, 16>, Table3D<f32, 16, 16>) = from_bytes(&table_buf).map_err(|_| ())?;
+        Ok(tables)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hal::ExternalFlash;
+    use crate::app::Table3D;
+    use postcard::to_vec;
     use heapless::Vec;
 
-    #[derive(Debug)]
     struct MockFlash {
-        memory: Vec<u8, 65536>,
-        fail_read: bool,
-    }
-
-    impl MockFlash {
-        fn new() -> Self {
-            Self {
-                memory: Vec::new(),
-                fail_read: false,
-            }
-        }
-
-        fn write_mem(&mut self, addr: u32, data: &[u8]) {
-            let addr = addr as usize;
-            if self.memory.len() < addr + data.len() {
-                self.memory.resize(addr + data.len(), 0).unwrap();
-            }
-            self.memory[addr..addr + data.len()].copy_from_slice(data);
-        }
+        data: Vec<u8, 8192>,
     }
 
     impl ExternalFlash for MockFlash {
-        type Error = ();
-
-        fn init(&mut self) -> Result<(), Self::Error> { Ok(()) }
-
-        fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-            if self.fail_read {
+        async fn read(&mut self, address: u32, buffer: &mut [u8]) -> Result<(), ()> {
+            let address = address as usize;
+            if address + buffer.len() > self.data.len() {
                 return Err(());
             }
-            let addr = addr as usize;
-            if addr + buf.len() > self.memory.len() {
-                return Err(());
-            }
-            buf.copy_from_slice(&self.memory[addr..addr + buf.len()]);
+            buffer.copy_from_slice(&self.data[address..address + buffer.len()]);
             Ok(())
         }
 
-        fn write_page(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
-            self.write_mem(addr, data);
+        async fn write(&mut self, address: u32, buffer: &[u8]) -> Result<(), ()> {
+            let address = address as usize;
+            if address + buffer.len() > self.data.len() {
+                return Err(());
+            }
+            self.data[address..address + buffer.len()].copy_from_slice(buffer);
             Ok(())
         }
 
-        fn erase_sector(&mut self, _addr: u32) -> Result<(), Self::Error> { Ok(()) }
-        fn read_device_id(&mut self) -> Result<u32, Self::Error> { Ok(0) }
+        async fn erase_sector(&mut self, sector: u32) -> Result<(), ()> {
+            let start = sector as usize * 4096;
+            if start >= self.data.len() {
+                return Err(());
+            }
+            let end = (start + 4096).min(self.data.len());
+            for i in start..end {
+                self.data[i] = 0xFF;
+            }
+            Ok(())
+        }
     }
 
-    fn create_test_bank(payload: &[u8], version: u16, is_active: bool) -> (TableHeader, Vec<u8, 1024>) {
-        let mut hasher = Hasher::new();
-        hasher.update(payload);
-        let crc32 = hasher.finalize();
+    #[tokio::test]
+    async fn test_table_manager() {
+        let mut flash_data = Vec::new();
+        flash_data.resize_default(8192).unwrap();
+        let mut flash = MockFlash { data: flash_data };
+
+        let tables = (
+            Table3D::new_from_data([[1.0; 16]; 16]),
+            Table3D::new_from_data([[2.0; 16]; 16]),
+        );
+        let table_data: Vec<u8, 1024> = to_vec(&tables).unwrap();
+
+        let crc = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let crc32 = crc.checksum(&table_data);
 
         let header = TableHeader {
-            magic: TABLE_HEADER_MAGIC,
-            version,
-            size: payload.len() as u16,
+            magic: 0xDEADBEEF,
+            version: 1,
+            size: table_data.len() as u32,
             crc32,
-            is_active: if is_active { 1 } else { 0 },
-            padding: [0; 3],
+            is_active: true,
         };
+        let header_data: Vec<u8, 32> = to_vec(&header).unwrap();
 
-        let mut bank_data: Vec<u8, 1024> = Vec::new();
-        let header_bytes: [u8; core::mem::size_of::<TableHeader>()] = unsafe { core::mem::transmute(header) };
-        bank_data.extend_from_slice(&header_bytes).unwrap();
-        bank_data.extend_from_slice(payload).unwrap();
+        flash.write(0, &header_data).await.unwrap();
+        flash.write(header_data.len() as u32, &table_data).await.unwrap();
 
-        (header, bank_data)
-    }
+        let mut manager = TableManager::new(&mut flash);
+        let loaded_tables = manager.load_active_tables().await;
 
-    #[test]
-    fn test_load_bank_a_success() {
-        let payload = b"This is a valid payload for bank A";
-        let (_header, bank_data) = create_test_bank(payload, 1, true);
-
-        let mut flash = MockFlash::new();
-        flash.write_mem(CALIBRATION_BANK_A_ADDR, &bank_data);
-
-        let mut manager = TableManager::new(flash);
-        let mut dest = [0u8; 1024];
-
-        assert!(manager.load_active_tables(&mut dest).is_ok());
-        assert_eq!(&dest[..payload.len()], payload);
-    }
-
-    #[test]
-    fn test_fallback_to_bank_b() {
-        // Bank A is corrupt
-        let payload_a = b"This is a corrupt payload for bank A";
-        let (mut header_a, bank_data_a) = create_test_bank(payload_a, 1, true);
-        header_a.crc32 = 0; // Corrupt the CRC
-        let header_a_bytes: [u8; core::mem::size_of::<TableHeader>()] = unsafe { core::mem::transmute(header_a) };
-
-        let mut flash = MockFlash::new();
-        flash.write_mem(CALIBRATION_BANK_A_ADDR, &header_a_bytes);
-        flash.write_mem(CALIBRATION_BANK_A_ADDR + header_a_bytes.len() as u32, payload_a);
-
-        // Bank B is valid
-        let payload_b = b"This is a valid payload for bank B";
-        let (_header_b, bank_data_b) = create_test_bank(payload_b, 1, true);
-        flash.write_mem(CALIBRATION_BANK_B_ADDR, &bank_data_b);
-
-        let mut manager = TableManager::new(flash);
-        let mut dest = [0u8; 1024];
-
-        assert!(manager.load_active_tables(&mut dest).is_ok());
-        assert_eq!(&dest[..payload_b.len()], payload_b);
-    }
-
-    #[test]
-    fn test_both_banks_corrupt() {
-        // Bank A is corrupt
-        let payload_a = b"This is a corrupt payload for bank A";
-        let (mut header_a, bank_data_a) = create_test_bank(payload_a, 1, true);
-        header_a.crc32 = 0; // Corrupt the CRC
-        let header_a_bytes: [u8; core::mem::size_of::<TableHeader>()] = unsafe { core::mem::transmute(header_a) };
-
-        let mut flash = MockFlash::new();
-        flash.write_mem(CALIBRATION_BANK_A_ADDR, &header_a_bytes);
-        flash.write_mem(CALIBRATION_BANK_A_ADDR + header_a_bytes.len() as u32, payload_a);
-
-        // Bank B is also corrupt
-        let payload_b = b"This is a corrupt payload for bank B";
-        let (mut header_b, bank_data_b) = create_test_bank(payload_b, 1, true);
-        header_b.magic = 0; // Corrupt the magic
-        let header_b_bytes: [u8; core::mem::size_of::<TableHeader>()] = unsafe { core::mem::transmute(header_b) };
-        flash.write_mem(CALIBRATION_BANK_B_ADDR, &header_b_bytes);
-        flash.write_mem(CALIBRATION_BANK_B_ADDR + header_b_bytes.len() as u32, payload_b);
-
-        let mut manager = TableManager::new(flash);
-        let mut dest = [0u8; 1024];
-
-        match manager.load_active_tables(&mut dest) {
-            Err(StorageError::BothBanksCorrupt) => assert!(true),
-            _ => assert!(false, "Expected BothBanksCorrupt error"),
-        }
+        assert_eq!(loaded_tables.0.data[0][0], 1.0);
+        assert_eq!(loaded_tables.1.data[0][0], 2.0);
     }
 }
