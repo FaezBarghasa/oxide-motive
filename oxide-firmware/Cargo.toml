@@ -22,6 +22,11 @@ stm32h7xx-hal = { version = "0.16", features = ["stm32h743v", "rt"] }
 # For panic handling
 panic-halt = "0.2"
 
+[build-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+quote = "1.0"
+
 [features]
 # Conditional compilation for different MCU families
 stm32h7 = ["stm32h7xx-hal"]

@@ -13,8 +13,14 @@ heapless = "0.8.0" # For mock CAN bus and other potential uses
 
 [features]
 default = []
+stm32h743 = ["stm32h7xx-hal/stm32h743v", "cortex-m", "cortex-m-rt"]
 stm32g4 = ["stm32g4xx-hal", "cortex-m", "cortex-m-rt"]
 nxp_s32k = ["nxp-s32k1xx-hal", "cortex-m", "cortex-m-rt"]
+
+[dependencies.stm32h7xx-hal]
+version = "0.16"
+features = ["rt", "defmt"]
+optional = true
 
 [dependencies.stm32g4xx-hal]
 version = "0.10.0" # Or the latest compatible version
