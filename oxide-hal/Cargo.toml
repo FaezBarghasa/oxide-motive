@@ -9,5 +9,8 @@ embedded-hal-async = "1.0.0"
 embedded-io = "0.6.1"
 heapless = "0.8.0"
 
+[dev-dependencies]
+embedded-hal-mock = "0.10.0"
+
 [features]
 default = []
