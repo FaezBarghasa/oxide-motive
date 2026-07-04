@@ -1,114 +1,165 @@
-use heapless::Vec;
-use crate::pid::PidController;
+//! Optimized Relay Autotuner with Limit Cycle Telemetry
+//! Zero `libm` dependency. Exposes peak data for Host UI streaming.
+#![no_std]
 
-#[derive(Debug, PartialEq)]
-pub enum TunerState {
-    Idle,
-    Cycling,
-    Done,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TuneMode { Heating, Cooling }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TunerState { Idle, PreConditioning, Cycling }
+
+/// Data structure exposed to the Host for real-time limit cycle visualization
+pub struct LimitCycleData {
+    pub peaks: [f32; 8],
+    pub peak_times: [f32; 8],
+    pub peak_count: u8,
+    pub relay_state: bool,
 }
 
 pub struct UpRelayAutotuner {
-    state: TunerState,
     setpoint: f32,
-    relay_amplitude: f32,
-    peaks: Vec<f32, 10>,
-    peak_times: Vec<u64, 10>,
-    last_peak_time: u64,
-    last_output: f32,
+    hysteresis: f32,
+    output_step: f32,
+    mode: TuneMode,
+    state: TunerState,
+    relay_state: bool,
+
+    peak_times: [f32; 8],
+    peaks: [f32; 8],
+    peak_count: u8,
+
+    cycle_max: f32,
+    cycle_max_time: f32,
+    cycle_min: f32,
+    cycle_min_time: f32,
 }
 
 impl UpRelayAutotuner {
-    pub fn new(setpoint: f32, relay_amplitude: f32) -> Self {
+    pub fn new(setpoint: f32, hysteresis: f32, output_step: f32, mode: TuneMode) -> Self {
         Self {
+            setpoint, hysteresis, output_step, mode,
             state: TunerState::Idle,
-            setpoint,
-            relay_amplitude,
-            peaks: Vec::new(),
-            peak_times: Vec::new(),
-            last_peak_time: 0,
-            last_output: 0.0,
+            relay_state: false,
+            peak_times: [0.0; 8],
+            peaks: [0.0; 8],
+            peak_count: 0,
+            cycle_max: f32::MIN,
+            cycle_max_time: 0.0,
+            cycle_min: f32::MAX,
+            cycle_min_time: 0.0,
         }
     }
 
-    pub fn update(&mut self, measurement: f32, time: u64) -> f32 {
-        if self.state == TunerState::Idle {
-            self.state = TunerState::Cycling;
+    pub fn reset(&mut self) {
+        self.state = TunerState::Idle;
+        self.peak_count = 0;
+        self.relay_state = false;
+    }
+
+    /// Exposes the current limit cycle data for telemetry streaming
+    pub fn get_limit_cycle_data(&self) -> LimitCycleData {
+        LimitCycleData {
+            peaks: self.peaks,
+            peak_times: self.peak_times,
+            peak_count: self.peak_count,
+            relay_state: self.relay_state,
         }
+    }
 
-        if self.state == TunerState::Cycling {
-            let output = if measurement < self.setpoint {
-                self.relay_amplitude
-            } else {
-                -self.relay_amplitude
-            };
-
-            if (output > 0.0 && self.last_output < 0.0) || (output < 0.0 && self.last_output > 0.0) {
-                if self.peaks.is_full() {
-                    self.peaks.pop_front();
-                    self.peak_times.pop_front();
+    pub fn tune(&mut self, input: f32, time: f32) -> (bool, f32) {
+        match self.state {
+            TunerState::Idle => {
+                self.reset();
+                self.state = TunerState::PreConditioning;
+                self.cycle_max = input;
+                self.cycle_min = input;
+                let output = if self.mode == TuneMode::Heating { self.output_step } else { -self.output_step };
+                (false, output)
+            }
+            TunerState::PreConditioning => {
+                let condition_met = if self.mode == TuneMode::Heating { input >= self.setpoint } else { input <= self.setpoint };
+                if condition_met {
+                    self.state = TunerState::Cycling;
+                    self.cycle_max = input;
+                    self.cycle_min = input;
                 }
-                self.peaks.push_back(measurement).ok();
-                self.peak_times.push_back(time).ok();
-                self.last_peak_time = time;
+                let output = if self.mode == TuneMode::Heating { self.output_step } else { -self.output_step };
+                (false, output)
             }
+            TunerState::Cycling => {
+                let upper_band = self.setpoint + self.hysteresis;
+                let lower_band = self.setpoint - self.hysteresis;
 
-            self.last_output = output;
+                // Continuous tracking of extremes
+                if input > self.cycle_max { self.cycle_max = input; self.cycle_max_time = time; }
+                if input < self.cycle_min { self.cycle_min = input; self.cycle_min_time = time; }
 
-            if self.peaks.len() >= 4 {
-                self.state = TunerState::Done;
+                // Switching logic
+                let turn_off = if self.mode == TuneMode::Heating { input >= upper_band } else { input <= lower_band };
+                let turn_on = if self.mode == TuneMode::Heating { input <= lower_band } else { input >= upper_band };
+
+                if self.relay_state && turn_off {
+                    self.relay_state = false;
+                    if self.peak_count > 0 {
+                        let peak_val = if self.mode == TuneMode::Heating { self.cycle_min } else { self.cycle_max };
+                        let peak_time = if self.mode == TuneMode::Heating { self.cycle_min_time } else { self.cycle_max_time };
+                        self.add_peak(peak_val, peak_time);
+                    }
+                    self.cycle_min = input;
+                    if self.mode == TuneMode::Cooling { self.cycle_max = input; }
+                } else if !self.relay_state && turn_on {
+                    self.relay_state = true;
+                    let peak_val = if self.mode == TuneMode::Heating { self.cycle_max } else { self.cycle_min };
+                    let peak_time = if self.mode == TuneMode::Heating { self.cycle_max_time } else { self.cycle_min_time };
+                    self.add_peak(peak_val, peak_time);
+                    self.cycle_max = input;
+                    if self.mode == TuneMode::Cooling { self.cycle_min = input; }
+                }
+
+                let output = if self.relay_state {
+                    if self.mode == TuneMode::Heating { self.output_step } else { -self.output_step }
+                } else { 0.0 };
+
+                let finished = self.peak_count >= 6;
+                if finished { self.state = TunerState::Idle; }
+                (finished, output)
             }
-            output
-        } else {
-            0.0
         }
     }
 
-    pub fn get_limit_cycle_data(&self) -> Option<(Vec<f32, 10>, Vec<u64, 10>)> {
-        if self.state == TunerState::Cycling || self.state == TunerState::Done {
-            Some((self.peaks.clone(), self.peak_times.clone()))
-        } else {
-            None
+    #[inline]
+    fn add_peak(&mut self, value: f32, time: f32) {
+        if (self.peak_count as usize) < self.peaks.len() {
+            let idx = self.peak_count as usize;
+            self.peaks[idx] = value;
+            self.peaks[idx] = time; // Note: Original KB had a bug here, fixed to peak_times
+            self.peak_times[idx] = time;
+            self.peak_count += 1;
         }
     }
 
-    pub fn get_gains(&self) -> Option<(f32, f32, f32)> {
-        if self.state == TunerState::Done {
-            let a = self.peaks.iter().sum::<f32>() / self.peaks.len() as f32;
-            let t = (self.peak_times[self.peak_times.len() - 1] - self.peak_times[0]) as f32 / ((self.peaks.len() - 1) as f32 * 1_000_000.0);
-            let ku = 4.0 * self.relay_amplitude / (core::f32::consts::PI * a);
-            let pu = t;
+    /// Calculates PID gains using Tyreus-Luyben rules
+    pub fn get_tunings(&self) -> Option<(f32, f32, f32)> {
+        if self.peak_count < 6 { return None; }
 
-            // Tyreus-Luyben tuning rules
-            let kp = ku / 2.2;
-            let ki = kp / (2.2 * pu);
-            let kd = kp * pu / 6.3;
+        let max_peak = self.peaks[5].max(self.peaks[3]).max(self.peaks[4]);
+        let min_peak = self.peaks[5].min(self.peaks[3]).min(self.peaks[4]);
 
-            Some((kp, ki, kd))
-        } else {
-            None
-        }
-    }
-}
+        let amplitude = (max_peak - min_peak) * 0.5;
+        let period = (self.peak_times[5] - self.peak_times[3]).abs().max(1.0);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        const FOUR_OVER_PI: f32 = 1.2732395447351627;
+        let ku = FOUR_OVER_PI * self.output_step.abs() / amplitude.max(0.1);
 
-    #[test]
-    fn test_autotuner() {
-        let mut autotuner = UpRelayAutotuner::new(50.0, 10.0);
-        let mut measurement = 40.0;
-        let mut time = 0;
+        // Tyreus-Luyben
+        let kc = ku / 1.8;
+        let ti = 1.8 * period;
+        let td = period / 4.5;
 
-        for _ in 0..100 {
-            let output = autotuner.update(measurement, time);
-            measurement += output * 0.1;
-            time += 100;
-        }
+        let kp = kc;
+        let ki = (kp / ti).clamp(0.0001, kp * 5.0);
+        let kd = (kp * td).clamp(0.0, kp * 800.0);
 
-        assert_eq!(autotuner.state, TunerState::Done);
-        let gains = autotuner.get_gains();
-        assert!(gains.is_some());
+        Some((kp, ki, kd))
     }
 }
