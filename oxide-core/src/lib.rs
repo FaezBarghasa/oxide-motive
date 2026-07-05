@@ -8,6 +8,7 @@ use heapless::Vec;
 pub trait OxideSlint {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, OxideSlint)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct VehicleTelemetry {
     pub speed: f32,
     pub rpm: u32,
@@ -22,6 +23,7 @@ impl VehicleTelemetry {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, OxideSlint)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DiagnosticDtc {
     pub code: u32,
     pub severity: u8,
@@ -29,12 +31,14 @@ pub struct DiagnosticDtc {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, OxideSlint)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct HmiCommand {
     pub target: u8,
     pub action: u8,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UdsRequest {
     DiagnosticSessionControl(u8),
     ReadDataByIdentifier(u16),
@@ -42,6 +46,7 @@ pub enum UdsRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UdsResponse {
     DiagnosticSessionControl(u8),
     ReadDataByIdentifier(u16, Vec<u8, 64>),

@@ -17,7 +17,7 @@ cobs = { version = "0.2", default-features = false } # For COBS framing
 divan = "0.1.13"
 
 [features]
-std = ["serde/std", "postcard/std"] # Enable std features for testing/host
+std = ["serde/std", "postcard/use-std"] # Enable std features for testing/host
 default = [] # No std by default for no_std compatibility
 
 [[bench]]

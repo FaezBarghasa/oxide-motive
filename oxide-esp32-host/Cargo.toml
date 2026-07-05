@@ -4,27 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# ESP-IDF related dependencies
-esp-idf-hal = { version = "0.42.0" } # Replace with actual version
-esp-idf-sys = { version = "0.32.0", features = ["binstart"] } # Replace with actual version
-esp-idf-svc = { version = "0.47.0" } # Replace with actual version
-esp-idf-executor = { version = "0.1.0" } # Replace with actual version
-esp-idf-futures = { version = "0.1.0" } # Replace with actual version
-embedded-svc = { version = "0.25.0" } # Replace with actual version
+esp-idf-hal = { workspace = true }
+esp-idf-sys = { version = "0.37.2", features = ["binstart"] }
+esp-idf-svc = { workspace = true }
 log = { version = "0.4.17" }
 anyhow = "1.0.69"
-
-# For communication with the MCU (e.g., UART or CAN)
-# This will likely be a custom driver or a HAL trait implementation
 oxide-protocol = { path = "../oxide-protocol" }
-
-# For UI (LVGL)
-lvgl = { version = "0.6.0", optional = true } # Replace with actual version
-lvgl-sys = { version = "0.6.0", optional = true } # Replace with actual version
-lvgl-rs = { version = "0.6.0", optional = true } # Replace with actual version
 
 [features]
 default = ["std"]
-std = ["esp-idf-hal/std", "esp-idf-sys/std", "esp-idf-svc/std", "esp-idf-executor/std", "esp-idf-futures/std", "embedded-svc/std"]
-# Enable LVGL UI
-lvgl_ui = ["lvgl", "lvgl-sys", "lvgl-rs"]
+std = ["esp-idf-hal/std", "esp-idf-sys/std", "esp-idf-svc/std"]

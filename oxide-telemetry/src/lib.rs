@@ -18,18 +18,27 @@ pub async fn uart_reader_task(
     channel: &'static TelemetryChannel,
 ) {
     let mut buf = [0u8; 256];
+    defmt::info!("Telemetry: UART reader task started");
     loop {
         match reader.read_exact(&mut buf).await {
             Ok(_) => {
                 let decoded_len = decode_in_place(&mut buf).unwrap_or(0);
                 if decoded_len > 0 {
-                    if let Ok(telemetry) = from_bytes::<VehicleTelemetry>(&buf[..decoded_len]) {
-                        channel.send(telemetry).await;
+                    match from_bytes::<VehicleTelemetry>(&buf[..decoded_len]) {
+                        Ok(telemetry) => {
+                            defmt::info!("Telemetry: decoded packet: speed={}, rpm={}", telemetry.speed, telemetry.rpm);
+                            channel.send(telemetry).await;
+                        }
+                        Err(_) => {
+                            defmt::error!("Telemetry: failed to deserialize telemetry packet");
+                        }
                     }
+                } else {
+                    defmt::warn!("Telemetry: decoded packet length is zero");
                 }
             }
             Err(_) => {
-                // Handle read error
+                defmt::error!("Telemetry: UART read error");
             }
         }
     }
@@ -40,11 +49,15 @@ pub async fn mqtt_publisher_task(
     mut client: MqttClient<'static, impl Read, impl embedded_io_async::Write>,
     channel: &'static TelemetryChannel,
 ) {
+    defmt::info!("Telemetry: MQTT publisher task started");
     loop {
         let telemetry = channel.receive().await;
         if let Ok(json_payload) = to_string::<_, 256>(&telemetry) {
             let topic = "oxide-tech/vehicle/VIN/telemetry"; // Replace VIN
+            defmt::info!("Telemetry: publishing JSON telemetry to topic={}", topic);
             let _ = client.publish(topic, json_payload.as_bytes(), QoS::ExactlyOnce).await;
+        } else {
+            defmt::error!("Telemetry: failed to serialize telemetry to JSON");
         }
     }
 }

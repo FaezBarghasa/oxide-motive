@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-heapless = "0.8"
-embedded-io-async = "0.6.1"
+heapless = "0.9.3"
+embedded-io-async = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 postcard = "1.0"
-cobs = "0.2.3"
-embassy-time = "0.3.0"
-embassy-sync = "0.5.0"
+cobs = "0.5.1"
+embassy-time = "0.5.1"
+embassy-sync = "0.8.0"
 
 [dev-dependencies]
 divan = "0.1.4"
 
 [features]
 default = []
-std = ["serde/std", "postcard/std"]
+std = ["serde/std", "postcard/use-std"]

@@ -16,17 +16,29 @@ pub async fn uds_task(
     let vin = "VIN"; // Replace with actual VIN
     let response_topic = format!("oxide-tech/vehicle/{}/uds/response", vin);
 
+    defmt::info!("UDS: task started for VIN={}", vin);
+
     loop {
         let request = request_channel.receive().await;
+        defmt::info!("UDS: received request: {:?}", request);
 
         let response = match with_timeout(Duration::from_secs(2), handle_uds_request(request)).await {
-            Ok(response) => response,
-            Err(_) => UdsResponse::NegativeResponse(0, 0x22), // ConditionsNotCorrect
+            Ok(response) => {
+                defmt::info!("UDS: request processed successfully");
+                response
+            }
+            Err(_) => {
+                defmt::warn!("UDS: request timed out or failed");
+                UdsResponse::NegativeResponse(0, 0x22) // ConditionsNotCorrect
+            }
         };
 
         let mut buf = [0u8; 128];
         if let Ok(serialized) = to_vec::<_, Vec<u8, 128>>(&response, &mut buf) {
+            defmt::info!("UDS: publishing response, size={}", serialized.len());
             let _ = client.publish(&response_topic, &serialized, QoS::AtLeastOnce).await;
+        } else {
+            defmt::error!("UDS: serialization of response failed");
         }
     }
 }

@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 slint = "1.5"
-esp-idf-hal = "0.42.5"
-esp-idf-svc = "0.47.3"
+esp-idf-hal = { workspace = true }
+esp-idf-svc = { workspace = true }
 
 [features]
 default = []

@@ -5,10 +5,12 @@ edition = "2021"
 
 [dependencies]
 oxide-core = { path = "../oxide-core" }
-embassy-executor = "0.5.0"
-embassy-sync = "0.5.0"
-embassy-time = "0.3.0"
+embassy-executor = { workspace = true }
+embassy-sync = { workspace = true }
+embassy-time = { workspace = true }
 mqtt-async-embedded = { path = "../mqtt-async-embedded" }
+defmt = { workspace = true }
+defmt-rtt = { workspace = true }
 
 [features]
 default = []

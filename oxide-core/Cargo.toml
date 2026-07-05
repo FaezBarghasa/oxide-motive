@@ -8,6 +8,7 @@ serde = { workspace = true, default-features = false, features = ["derive"] }
 postcard = { workspace = true }
 heapless = { workspace = true, features = ["serde"] }
 slint = { version = "1.5", default-features = false }
+defmt = { workspace = true, optional = true }
 
 [build-dependencies]
 syn = { version = "2.0", features = ["full", "parsing"] }
@@ -15,8 +16,9 @@ quote = "1.0"
 proc-macro2 = "1.0"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8.2"
 
 [features]
-std = ["serde/std", "postcard/std", "slint/std"]
+std = ["serde/std", "postcard/use-std", "slint/std"]
 default = []
+defmt = ["dep:defmt", "heapless/defmt"]
