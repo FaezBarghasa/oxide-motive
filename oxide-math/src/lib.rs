@@ -1,20 +1,25 @@
+//! Mathematical utilities for Oxide Motive.
 #![no_std]
-#![feature(generic_const_exprs)]
-#![allow(incomplete_features)]
 #![deny(missing_docs)]
 
+/// State estimation algorithms.
 pub mod estimation;
 
+/// Mathematical errors.
 #[derive(Debug)]
 pub enum MathError {
+    /// Input value is out of bounds.
     OutOfBounds,
 }
 
 /// A 3D lookup table for engine calibration maps (e.g., VE, spark).
 /// X_SIZE and Y_SIZE are the dimensions of the table axes.
 pub struct Table3D<T, const X_SIZE: usize, const Y_SIZE: usize> {
+    /// X axis calibration points.
     pub x_axis: [T; X_SIZE],
+    /// Y axis calibration points.
     pub y_axis: [T; Y_SIZE],
+    /// 2D grid of values corresponding to the X and Y coordinates.
     pub data: [[T; Y_SIZE]; X_SIZE],
 }
 
@@ -28,6 +33,7 @@ impl<T: Copy + Default, const X_SIZE: usize, const Y_SIZE: usize> Table3D<T, X_S
         }
     }
 
+    /// Creates a new table from the given 2D data.
     pub fn new_from_data(data: [[T; Y_SIZE]; X_SIZE]) -> Self {
         Self {
             x_axis: [T::default(); X_SIZE],
@@ -38,7 +44,7 @@ impl<T: Copy + Default, const X_SIZE: usize, const Y_SIZE: usize> Table3D<T, X_S
 }
 
 impl<const X_SIZE: usize, const Y_SIZE: usize> Table3D<f32, X_SIZE, Y_SIZE> {
-    /// Performs trilinear interpolation on the 3D table.
+    /// Performs bilinear interpolation on the 3D table.
     ///
     /// # Arguments
     /// * `x` - The value on the x-axis (e.g., RPM).
@@ -114,13 +120,6 @@ mod tests {
             ],
         };
 
-        // Test point: x=1500, y=75
-        // x_idx=0, x_frac=0.5
-        // y_idx=0, y_frac=0.5
-        // z00=10, z10=15, z01=20, z11=25
-        // z0 = 10 + 0.5 * (15-10) = 12.5
-        // z1 = 20 + 0.5 * (25-20) = 22.5
-        // result = 12.5 + 0.5 * (22.5-12.5) = 17.5
         assert_eq!(table.interpolate(1500.0, 75.0), 17.5);
     }
 

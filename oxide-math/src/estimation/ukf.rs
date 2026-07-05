@@ -1,6 +1,6 @@
 use nalgebra::{SMatrix, SVector, Cholesky};
 
-pub struct UnscentedKalmanFilter<const N: usize, const M: usize> {
+pub struct UnscentedKalmanFilter<const N: usize, const M: usize, const S: usize> {
     x: SVector<f32, N>,
     p: SMatrix<f32, N, N>,
     q: SMatrix<f32, N, N>,
@@ -10,7 +10,7 @@ pub struct UnscentedKalmanFilter<const N: usize, const M: usize> {
     kappa: f32,
 }
 
-impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
+impl<const N: usize, const M: usize, const S: usize> UnscentedKalmanFilter<N, M, S> {
     pub fn new(
         x0: SVector<f32, N>,
         p0: SMatrix<f32, N, N>,
@@ -38,7 +38,7 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         let lambda = libm::powf(self.alpha, 2.0) * (N as f32 + self.kappa) - N as f32;
         let gamma = libm::sqrtf(N as f32 + lambda);
 
-        let mut sigma_points = SMatrix::<f32, N, { 2 * N + 1 }>::zeros();
+        let mut sigma_points = SMatrix::<f32, N, S>::zeros();
         sigma_points.set_column(0, &self.x);
 
         let p_sqrt = self.p.cholesky().unwrap().l();
@@ -49,8 +49,8 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
             sigma_points.set_column(i + 1 + N, &col);
         }
 
-        let mut predicted_sigma_points = SMatrix::<f32, N, { 2 * N + 1 }>::zeros();
-        for i in 0..(2 * N + 1) {
+        let mut predicted_sigma_points = SMatrix::<f32, N, S>::zeros();
+        for i in 0..S {
             let col = f(sigma_points.column(i).into(), dt);
             predicted_sigma_points.set_column(i, &col);
         }
@@ -60,12 +60,12 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         let wmi = 1.0 / (2.0 * (N as f32 + lambda));
 
         let mut x_pred = wm0 * predicted_sigma_points.column(0);
-        for i in 1..(2 * N + 1) {
+        for i in 1..S {
             x_pred += wmi * predicted_sigma_points.column(i);
         }
 
         let mut p_pred = wc0 * (predicted_sigma_points.column(0) - x_pred) * (predicted_sigma_points.column(0) - x_pred).transpose();
-        for i in 1..(2 * N + 1) {
+        for i in 1..S {
             p_pred += wmi * (predicted_sigma_points.column(i) - x_pred) * (predicted_sigma_points.column(i) - x_pred).transpose();
         }
         p_pred += self.q;
@@ -81,7 +81,7 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         let lambda = libm::powf(self.alpha, 2.0) * (N as f32 + self.kappa) - N as f32;
         let gamma = libm::sqrtf(N as f32 + lambda);
 
-        let mut sigma_points = SMatrix::<f32, N, { 2 * N + 1 }>::zeros();
+        let mut sigma_points = SMatrix::<f32, N, S>::zeros();
         sigma_points.set_column(0, &self.x);
 
         let p_sqrt = self.p.cholesky().unwrap().l();
@@ -92,8 +92,8 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
             sigma_points.set_column(i + 1 + N, &col);
         }
 
-        let mut z_sigma_points = SMatrix::<f32, M, { 2 * N + 1 }>::zeros();
-        for i in 0..(2 * N + 1) {
+        let mut z_sigma_points = SMatrix::<f32, M, S>::zeros();
+        for i in 0..S {
             let col = h(sigma_points.column(i).into());
             z_sigma_points.set_column(i, &col);
         }
@@ -103,18 +103,18 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         let wmi = 1.0 / (2.0 * (N as f32 + lambda));
 
         let mut z_pred = wm0 * z_sigma_points.column(0);
-        for i in 1..(2 * N + 1) {
+        for i in 1..S {
             z_pred += wmi * z_sigma_points.column(i);
         }
 
         let mut s = wc0 * (z_sigma_points.column(0) - z_pred) * (z_sigma_points.column(0) - z_pred).transpose();
-        for i in 1..(2 * N + 1) {
+        for i in 1..S {
             s += wmi * (z_sigma_points.column(i) - z_pred) * (z_sigma_points.column(i) - z_pred).transpose();
         }
         s += self.r;
 
         let mut t = wc0 * (sigma_points.column(0) - self.x) * (z_sigma_points.column(0) - z_pred).transpose();
-        for i in 1..(2 * N + 1) {
+        for i in 1..S {
             t += wmi * (sigma_points.column(i) - self.x) * (z_sigma_points.column(i) - z_pred).transpose();
         }
 
@@ -127,11 +127,10 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nalgebra::Vector1;
 
     #[test]
     fn test_ukf() {
-        let mut ukf = UnscentedKalmanFilter::<1, 1>::new(
+        let mut ukf = UnscentedKalmanFilter::<1, 1, 3>::new(
             SVector::new(0.0),
             SMatrix::identity(),
             SMatrix::identity() * 0.01,
