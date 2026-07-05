@@ -35,8 +35,8 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
     where
         F: Fn(SVector<f32, N>, f32) -> SVector<f32, N>,
     {
-        let lambda = self.alpha.powi(2) * (N as f32 + self.kappa) - N as f32;
-        let gamma = (N as f32 + lambda).sqrt();
+        let lambda = libm::powf(self.alpha, 2.0) * (N as f32 + self.kappa) - N as f32;
+        let gamma = libm::sqrtf(N as f32 + lambda);
 
         let mut sigma_points = SMatrix::<f32, N, { 2 * N + 1 }>::zeros();
         sigma_points.set_column(0, &self.x);
@@ -56,7 +56,7 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         }
 
         let wm0 = lambda / (N as f32 + lambda);
-        let wc0 = wm0 + (1.0 - self.alpha.powi(2) + self.beta);
+        let wc0 = wm0 + (1.0 - libm::powf(self.alpha, 2.0) + self.beta);
         let wmi = 1.0 / (2.0 * (N as f32 + lambda));
 
         let mut x_pred = wm0 * predicted_sigma_points.column(0);
@@ -78,8 +78,8 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
     where
         H: Fn(SVector<f32, N>) -> SVector<f32, M>,
     {
-        let lambda = self.alpha.powi(2) * (N as f32 + self.kappa) - N as f32;
-        let gamma = (N as f32 + lambda).sqrt();
+        let lambda = libm::powf(self.alpha, 2.0) * (N as f32 + self.kappa) - N as f32;
+        let gamma = libm::sqrtf(N as f32 + lambda);
 
         let mut sigma_points = SMatrix::<f32, N, { 2 * N + 1 }>::zeros();
         sigma_points.set_column(0, &self.x);
@@ -99,7 +99,7 @@ impl<const N: usize, const M: usize> UnscentedKalmanFilter<N, M> {
         }
 
         let wm0 = lambda / (N as f32 + lambda);
-        let wc0 = wm0 + (1.0 - self.alpha.powi(2) + self.beta);
+        let wc0 = wm0 + (1.0 - libm::powf(self.alpha, 2.0) + self.beta);
         let wmi = 1.0 / (2.0 * (N as f32 + lambda));
 
         let mut z_pred = wm0 * z_sigma_points.column(0);

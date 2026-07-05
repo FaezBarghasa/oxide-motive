@@ -6728,6 +6728,8 @@ version = "0.1.0"
 dependencies = [
  "divan",
  "heapless 0.9.3",
+ "libm",
+ "nalgebra",
  "serde",
 ]
 
