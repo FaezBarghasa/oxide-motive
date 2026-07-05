@@ -1,16 +1,30 @@
+/// Unscented Kalman Filter (UKF) implementation for state estimation.
 use nalgebra::{SMatrix, SVector, Cholesky};
 
+/// Unscented Kalman Filter (UKF) for non-linear state estimation.
+///
+/// `N` is the state dimension.
+/// `M` is the measurement dimension.
+/// `S` is the number of sigma points, typically `2 * N + 1`.
 pub struct UnscentedKalmanFilter<const N: usize, const M: usize, const S: usize> {
-    x: SVector<f32, N>,
-    p: SMatrix<f32, N, N>,
-    q: SMatrix<f32, N, N>,
-    r: SMatrix<f32, M, M>,
-    alpha: f32,
-    beta: f32,
-    kappa: f32,
+    /// State estimate vector.
+    pub x: SVector<f32, N>,
+    /// State covariance matrix.
+    pub p: SMatrix<f32, N, N>,
+    /// Process noise covariance matrix.
+    pub q: SMatrix<f32, N, N>,
+    /// Measurement noise covariance matrix.
+    pub r: SMatrix<f32, M, M>,
+    /// Tuning parameter alpha determining spread of sigma points.
+    pub alpha: f32,
+    /// Tuning parameter beta incorporating prior knowledge of state distribution.
+    pub beta: f32,
+    /// Tuning parameter kappa secondary scaling parameter.
+    pub kappa: f32,
 }
 
 impl<const N: usize, const M: usize, const S: usize> UnscentedKalmanFilter<N, M, S> {
+    /// Creates a new Unscented Kalman Filter.
     pub fn new(
         x0: SVector<f32, N>,
         p0: SMatrix<f32, N, N>,
@@ -31,6 +45,7 @@ impl<const N: usize, const M: usize, const S: usize> UnscentedKalmanFilter<N, M,
         }
     }
 
+    /// Predicts the next state using the non-linear transition function.
     pub fn predict<F>(&mut self, f: F, dt: f32)
     where
         F: Fn(SVector<f32, N>, f32) -> SVector<f32, N>,
@@ -74,6 +89,7 @@ impl<const N: usize, const M: usize, const S: usize> UnscentedKalmanFilter<N, M,
         self.p = p_pred;
     }
 
+    /// Updates the state estimate with a new measurement using the measurement function.
     pub fn update<H>(&mut self, z: SVector<f32, M>, h: H)
     where
         H: Fn(SVector<f32, N>) -> SVector<f32, M>,
