@@ -5,10 +5,8 @@ edition = "2021"
 
 [dependencies]
 # Dependencies for STM32MP1 dual-core implementation
-# This will include PACs, HALs, and IPC crates
 cortex-m = { version = "0.7.7", optional = true }
 cortex-m-rt = { version = "0.7.0", optional = true }
-stm32mp1xx-hal = { version = "0.1.0", optional = true } # Placeholder, replace with actual
 stm32mp1 = { version = "0.16.0", features = [
     "rt",
     "stm32mp157",
@@ -22,7 +20,6 @@ memmap2 = { version = "0.9.5", optional = true }
 [features]
 default = []
 m4 = [
-    "stm32mp1xx-hal",
     "stm32mp1",
     "cortex-m",
     "cortex-m-rt",

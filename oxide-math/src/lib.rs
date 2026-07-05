@@ -1,4 +1,6 @@
 #![no_std]
+#![feature(generic_const_exprs)]
+#![allow(incomplete_features)]
 #![deny(missing_docs)]
 
 pub mod estimation;
@@ -18,7 +20,7 @@ pub struct Table3D<T, const X_SIZE: usize, const Y_SIZE: usize> {
 
 impl<T: Copy + Default, const X_SIZE: usize, const Y_SIZE: usize> Table3D<T, X_SIZE, Y_SIZE> {
     /// Creates a new, zeroed lookup table.
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             x_axis: [T::default(); X_SIZE],
             y_axis: [T::default(); Y_SIZE],
@@ -26,7 +28,7 @@ impl<T: Copy + Default, const X_SIZE: usize, const Y_SIZE: usize> Table3D<T, X_S
         }
     }
 
-    pub const fn new_from_data(data: [[T; Y_SIZE]; X_SIZE]) -> Self {
+    pub fn new_from_data(data: [[T; Y_SIZE]; X_SIZE]) -> Self {
         Self {
             x_axis: [T::default(); X_SIZE],
             y_axis: [T::default(); Y_SIZE],

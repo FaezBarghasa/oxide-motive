@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 serde = { workspace = true, optional = true }
 heapless = { workspace = true, optional = true }
+nalgebra = { workspace = true }
+libm = "0.2"
 
 [dev-dependencies]
 divan = "0.1.4"

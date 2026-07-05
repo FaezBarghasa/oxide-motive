@@ -13,7 +13,7 @@ postcard = { workspace = true }
 serde = { workspace = true }
 
 # RTIC and Cortex-M specific
-rtic = { workspace = true }
+rtic = { workspace = true, features = ["thumbv7-backend"] }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 cortex-m-rtic = { workspace = true }
