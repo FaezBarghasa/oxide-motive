@@ -4,10 +4,11 @@ use embassy_executor::task;
 use embassy_sync::channel::Channel;
 use mqtt_async_embedded::{MqttClient, QoS};
 use heapless::Vec;
-use ed25519_dalek::{Signature, VerifyingKey};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use esp_idf_svc::ota::EspOta;
 use postcard::from_bytes;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
 struct OtaManifest {
@@ -37,25 +38,29 @@ pub async fn ota_task(
         let mut update = ota.initiate_update().unwrap();
 
         let mut received_size = 0;
+        let mut hasher = Sha256::new();
         while received_size < manifest.size {
             let chunk = chunk_channel.receive().await;
             update.write(&chunk).unwrap();
+            hasher.update(&chunk);
             received_size += chunk.len() as u32;
         }
+
+        let hash_result = hasher.finalize();
 
         // This is a placeholder for the public key
         let public_key_bytes: [u8; 32] = [0; 32];
         let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
         let signature = Signature::from_bytes(&manifest.signature).unwrap();
 
-        // The verification should be on the written data, which is not straightforward to read back.
-        // This is a conceptual verification.
-        // let is_valid = public_key.verify(written_data, &signature).is_ok();
-        let is_valid = true; // Placeholder
+        // The verification checks the Ed25519 signature against the SHA256 digest of the OTA image.
+        let is_valid = public_key.verify(&hash_result, &signature).is_ok();
 
         if is_valid {
             update.finish().unwrap();
             esp_idf_svc::sys::esp_restart();
+        } else {
+            update.abort().unwrap();
         }
     }
 }

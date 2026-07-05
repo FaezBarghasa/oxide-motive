@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(missing_docs)]
 
 pub mod estimation;
 

@@ -21,13 +21,15 @@ async fn ingest_telemetry(
     telemetry: web::Json<Vec<VehicleTelemetry>>,
 ) -> impl Responder {
     let db = &data.lock().unwrap().db;
-    for item in telemetry.iter() {
-        let created: Result<surrealdb::sql::Value, Error> = db.create("telemetry").content(item).await;
-        if created.is_err() {
-            return HttpResponse::InternalServerError().finish();
-        }
+    let records = telemetry.into_inner();
+    
+    // Batch insert all records into the "telemetry" table
+    let created: Result<Vec<surrealdb::sql::Value>, Error> = db.insert("telemetry").content(records).await;
+    
+    match created {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
-    HttpResponse::Ok()
 }
 
 async fn get_telemetry(

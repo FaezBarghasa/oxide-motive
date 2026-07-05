@@ -20,27 +20,28 @@ members = [
 ]
 
 [workspace.dependencies]
-heapless = "0.8"
+heapless = "0.9.3"
 postcard = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 rtic = "2.1"
-cortex-m-rtic = "2.1"
-nalgebra = { version = "0.33", default-features = false }
-embassy-executor = "0.5.0"
-embassy-sync = "0.5.0"
-embassy-time = "0.3.0"
-embedded-io-async = "0.6.1"
+cortex-m-rtic = "1.1.4"
+nalgebra = { version = "0.35.0", default-features = false }
+embassy-executor = "0.10.0"
+embassy-sync = "0.8.0"
+embassy-time = "0.5.1"
+embedded-io-async = "0.7.0"
 slint = "1.5"
-cobs = "0.2.3"
-serde-json-core = "0.5.1"
-ed25519-dalek = "2.1.0"
-esp-idf-hal = "0.42.5"
-esp-idf-svc = "0.47.3"
+cobs = "0.5.1"
+serde-json-core = "0.6.0"
+ed25519-dalek = { version = "2.1.0", features = ["digest"] }
+esp-idf-hal = "0.46.2"
+esp-idf-svc = "0.52.1"
 actix-web = "4"
-surrealdb = { version = "1.0.0-beta.9", features = ["raw"] }
+surrealdb = { version = "3.2.0", features = ["raw"] }
 actix-rt = "2"
-reqwest = "0.11"
+reqwest = "0.13.4"
 clap = { version = "4.4.18", features = ["derive"] }
+sha2 = { version = "0.11.0", default-features = false }
 
 [profile.release]
 strip = true

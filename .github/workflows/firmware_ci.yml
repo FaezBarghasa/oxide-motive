@@ -1,0 +1,23 @@
+name: Firmware CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: thumbv7em-none-eabihf
+    - name: Build Firmware
+      run: cargo build --release --target thumbv7em-none-eabihf -p oxide-firmware
+    - name: Check Firmware
+      run: cargo check --target thumbv7em-none-eabihf -p oxide-firmware
+    - name: Clippy Firmware
+      run: cargo clippy --target thumbv7em-none-eabihf -p oxide-firmware -- -D warnings

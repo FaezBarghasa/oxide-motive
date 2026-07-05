@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
 
 use serde::{Deserialize, Serialize};
 use heapless::Vec;

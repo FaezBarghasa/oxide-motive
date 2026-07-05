@@ -4,14 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embassy-executor = "0.5.0"
-embassy-sync = "0.5.0"
+embassy-executor = "0.10.0"
+embassy-sync = "0.8.0"
 mqtt-async-embedded = { path = "../mqtt-async-embedded" }
-heapless = "0.8"
+heapless = "0.9.3"
 ed25519-dalek = "2.1.0"
-esp-idf-svc = "0.47.3"
+esp-idf-svc = "0.52.1"
 serde = { version = "1.0", features = ["derive"] }
 postcard = "1.0"
+sha2 = { workspace = true }
 
 [features]
 default = []
